@@ -1,0 +1,15 @@
+<div id="container" class="outer">
+  <div id="main" class="inner">
+    <div class="page-title"><%= __('search') %></div>
+
+    <div class="search-form-wrap">
+      <form action="/" method="get" class="search-form">
+        <input type="search" id="search-input" class="search-form-input" placeholder="<%= __('search') %>" value="<%= page.query || '' %>">
+        <button type="submit" class="search-form-submit">&#xF002;</button>
+      </form>
+      <div id="search-result" class="search-result"></div>
+    </div>
+  </div>
+
+  <%- partial('_partial/sidebar') %>
+</div>

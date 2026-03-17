@@ -1,0 +1,17 @@
+<h1 class="page-title"><%= page.title %></h1>
+
+<div class="categories-list">
+  <h2 class="widget-title">分类列表</h2>
+  <div class="widget">
+    <ul class="category-list">
+      <% site.categories.each(function(cat){ %>
+      <li class="category-list-item">
+        <a class="category-list-link" href="<%- url_for(cat.path) %>">
+          <%= cat.name %>
+          <span class="category-count"><%= cat.posts.length %></span>
+        </a>
+      </li>
+      <% }); %>
+    </ul>
+  </div>
+</div>

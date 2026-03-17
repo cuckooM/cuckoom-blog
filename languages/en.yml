@@ -1,0 +1,22 @@
+# en.yml - English
+menu:
+  home: Home
+  archives: Archives
+  categories: Categories
+  tags: Tags
+  about: About
+
+search: Search
+prev: Prev
+next: Next
+page: Page %d
+total: Total %d
+categories: Categories
+tags: Tags
+tagcloud: Tag Cloud
+recent_posts: Recent Posts
+newer: Newer
+older: Older
+share: Share
+powered_by: Powered by
+rss_feed: RSS Feed

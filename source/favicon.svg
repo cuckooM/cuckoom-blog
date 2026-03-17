@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="#262a30"/>
+
+  <!-- Cuckoo bird abstract design -->
+  <g transform="translate(15, 15) scale(0.7)">
+    <!-- Body -->
+    <path d="M50 20 C30 20 20 40 20 50 C20 60 35 65 45 60 C50 58 55 62 60 58 C65 54 60 40 55 35 C52 32 50 25 50 20" fill="#ffffff"/>
+    <!-- Head -->
+    <circle cx="50" cy="25" r="8" fill="#ffffff"/>
+    <!-- Beak -->
+    <path d="M58 25 L65 28 L58 32 Z" fill="#ff6b6b"/>
+    <!-- Eye -->
+    <circle cx="52" cy="23" r="2" fill="#262a30"/>
+  </g>
+
+  <!-- Blog text -->
+  <text x="50" y="88" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#ffffff" text-anchor="middle" letter-spacing="2">BLOG</text>
+</svg>

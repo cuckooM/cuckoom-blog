@@ -1,0 +1,22 @@
+<h1 class="page-title"><%= page.title %></h1>
+
+<div class="tags-list">
+  <h2 class="widget-title">标签云</h2>
+  <div class="widget tagcloud">
+    <%- tagcloud({min_font: 10, max_font: 20, amount: 100, color: true, start_color: '#ccc', end_color: '#111'}) %>
+  </div>
+
+  <h2 class="widget-title">标签列表</h2>
+  <div class="widget">
+    <ul class="tag-list" itemprop="keywords">
+      <% site.tags.each(function(tag){ %>
+      <li class="tag-list-item">
+        <a class="tag-list-link" href="<%- url_for(tag.path) %>" rel="tag">
+          <%= tag.name %>
+          <span class="tag-count"><%= tag.posts.length %></span>
+        </a>
+      </li>
+      <% }); %>
+    </ul>
+  </div>
+</div>

@@ -1,0 +1,36 @@
+# Hexo
+node_modules/
+public/
+.deploy*/
+.db.json
+
+# Editor
+.DS_Store
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Cache
+.cache/
+temp/
+
+# Backup
+*.bak
+*.backup
+
+# Environment (add your own for local config)
+.env
+.env.local

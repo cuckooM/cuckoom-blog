@@ -1,0 +1,124 @@
+<%
+  // Language detection - check localStorage first, then path
+  var currentLang = 'zh-CN';
+
+  // First check if user has a saved preference (browser only)
+  if (typeof localStorage !== 'undefined') {
+    var savedLang = localStorage.getItem('preferredLang');
+    if (savedLang === 'en' || savedLang === 'zh-CN') {
+      currentLang = savedLang;
+    }
+  }
+
+  // If no saved preference, check path (server-side fallback)
+  if (typeof localStorage === 'undefined' || !localStorage.getItem('preferredLang')) {
+    if (page && page.path) {
+      if (page.path.startsWith('en/')) {
+        currentLang = 'en';
+      }
+    }
+  }
+
+  var langNames = {
+    'zh-CN': '中文简体',
+    'en': 'English'
+  };
+
+  var currentLangName = langNames[currentLang] || '中文简体';
+%>
+
+<div class="lang-switcher">
+  <div class="lang-dropdown">
+    <button class="lang-btn" type="button" aria-label="切换语言">
+      <span class="lang-current"><%= currentLangName %></span>
+      <span class="lang-arrow">▼</span>
+    </button>
+    <ul class="lang-menu">
+      <li class="lang-item<% if (currentLang === 'zh-CN') { %> active<% } %>">
+        <a href="/" class="lang-link" lang="zh-CN">
+          <span class="flag-icon">🇨🇳</span>
+          <span class="lang-text">中文简体</span>
+        </a>
+      </li>
+      <li class="lang-item<% if (currentLang === 'en') { %> active<% } %>">
+        <a href="/en/" class="lang-link" lang="en">
+          <span class="flag-icon">🇺🇸</span>
+          <span class="lang-text">English</span>
+        </a>
+      </li>
+    </ul>
+  </div>
+</div>
+
+<script>
+  // Language switcher functionality
+  (function() {
+    var langPages = {
+      'zh-CN': '',
+      'en': '/en'
+    };
+
+    // Store user's language preference in localStorage
+    var userLang = localStorage.getItem('preferredLang') || 'zh-CN';
+
+    function changeLanguage(lang) {
+      // Persist user's choice
+      localStorage.setItem('preferredLang', lang);
+
+      var currentPath = window.location.pathname;
+      currentPath = currentPath.replace(/\/index\.html$/, '');
+
+      // Get current language prefix based on user's previous choice
+      var currentPrefix = langPages[userLang] || '';
+      if (currentPrefix === '') currentPrefix = '/';
+
+      // Remove current language prefix from path
+      var cleanPath = currentPath;
+      if (currentPrefix !== '/' && cleanPath.startsWith(currentPrefix)) {
+        cleanPath = currentPath.replace(new RegExp('^' + currentPrefix), '');
+      }
+
+      // Add new language prefix
+      var newPrefix = langPages[lang] || '';
+      if (newPrefix !== '' && !newPrefix.startsWith('/')) {
+        newPrefix = '/' + newPrefix;
+      }
+
+      var newPath = newPrefix + cleanPath;
+      if (newPath === '') newPath = '/';
+
+      // Update userLang for future use
+      userLang = lang;
+
+      // Check if the new page exists before navigating
+      if (lang === 'en' && cleanPath.startsWith('/20')) {
+        // For post pages, check if English version exists
+        var checkUrl = newPath + (newPath.endsWith('/') ? '' : '/') + 'index.html';
+        fetch(checkUrl, { method: 'HEAD' })
+          .then(function(response) {
+            if (response.ok) {
+              window.location.href = newPath;
+            } else {
+              // English version doesn't exist, stay on Chinese page
+              alert('该文章暂无英文版本');
+            }
+          })
+          .catch(function() {
+            // Error checking, stay on Chinese page
+            alert('该文章暂无英文版本');
+          });
+      } else {
+        window.location.href = newPath;
+      }
+    }
+
+    // Attach click handlers
+    document.querySelectorAll('.lang-link').forEach(function(link) {
+      link.addEventListener('click', function(e) {
+        e.preventDefault();
+        var lang = this.getAttribute('lang');
+        changeLanguage(lang);
+      });
+    });
+  })();
+</script>

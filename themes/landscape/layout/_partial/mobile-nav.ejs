@@ -1,0 +1,7 @@
+<nav id="mobile-nav">
+  <% for (var i in theme.menu){ %>
+    <% if (/^[\u4e00-\u9fa5]/.test(i)) { %>
+      <a href="<%- url_for(theme.menu[i]) %>" class="mobile-nav-link"><%= i %></a>
+    <% } %>
+  <% } %>
+</nav>

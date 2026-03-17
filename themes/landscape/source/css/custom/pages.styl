@@ -1,0 +1,308 @@
+/* Tags and Categories pages styles */
+
+$custom-border = #ddd
+$custom-link = #258fb8
+$custom-default = #555
+$custom-grey = #999
+$custom-bg = #eee
+$custom-white = #fff
+
+.page-title
+  text-align: center
+  font-size: 2em
+  margin: 40px 0 30px
+  color: $custom-default
+
+.tags-list, .categories-list
+  background: $custom-white
+  padding: 30px
+  border-radius: 8px
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1)
+  margin-bottom: 40px
+
+.widget-title
+  border-bottom: 2px solid $custom-border
+  padding-bottom: 10px
+  margin-bottom: 20px
+  color: $custom-default
+
+.tagcloud
+  margin: 10px 0
+  a
+    margin-right: 8px
+    margin-bottom: 8px
+    padding: 6px 12px
+    display: inline-block
+    background: $custom-bg
+    border-radius: 4px
+    transition: all 0.3s
+    &:hover
+      background: $custom-link
+      color: $custom-white
+      text-decoration: none
+      transform: scale(1.05)
+
+.tag-list, .category-list
+  list-style: none
+  padding: 0
+  margin: 0
+
+.tag-list-item, .category-list-item
+  padding: 10px 0
+  border-bottom: 1px solid $custom-border
+
+.tag-list-item:last-child, .category-list-item:last-child
+  border-bottom: none
+
+.tag-list-link, .category-list-link
+  color: $custom-default
+  text-decoration: none
+  transition: color 0.2s
+  display: flex
+  justify-content: space-between
+
+.tag-list-link:hover, .category-list-link:hover
+  color: $custom-link
+
+.tag-count, .category-count
+  color: $custom-grey
+  font-size: 0.85em
+  background: $custom-bg
+  padding: 2px 8px
+  border-radius: 10px
+
+.categories-list
+  .category-list-item
+    padding: 12px 0
+    .category-list-link
+      font-size: 1.1em
+
+.widget
+  margin-bottom: 30px
+  background: $custom-white
+  border-radius: 8px
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1)
+  overflow: hidden
+
+.widget-wrap
+  padding: 20px
+
+.archive-year
+  color: $custom-default
+  font-weight: bold
+  font-size: 1.2em
+
+/* Language Switcher */
+.lang-switcher
+  display: inline-block
+  vertical-align: middle
+  position: relative
+
+.lang-dropdown
+  position: relative
+
+.lang-btn
+  display: flex
+  align-items: center
+  gap: 6px
+  padding: 8px 14px
+  background: rgba(255,255,255,0.15)
+  border: 1px solid rgba(255,255,255,0.3)
+  border-radius: 20px
+  color: #fff
+  font-size: 13px
+  cursor: pointer
+  transition: all 0.3s ease
+  backdrop-filter: blur(10px)
+  -webkit-backdrop-filter: blur(10px)
+  min-width: auto
+  white-space: nowrap
+  justify-content: center
+
+  &:hover
+    background: rgba(255,255,255,0.25)
+    border-color: rgba(255,255,255,0.5)
+    transform: translateY(-1px)
+
+  &:active
+    transform: translateY(0)
+
+.lang-current
+  font-weight: 500
+
+.lang-arrow
+  font-size: 10px
+  opacity: 0.8
+
+.lang-menu
+  position: absolute
+  top: 110%
+  right: 0
+  margin-top: 8px
+  min-width: 140px
+  width: max-content
+  background: #fff
+  border-radius: 8px
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15)
+  padding: 6px
+  list-style: none
+  opacity: 0
+  visibility: hidden
+  transform: translateY(-10px)
+  transition: all 0.2s ease
+  z-index: 1000
+  white-space: nowrap
+
+.lang-dropdown:hover .lang-menu
+  opacity: 1
+  visibility: visible
+  transform: translateY(0)
+
+.lang-item
+  margin: 0
+  padding: 0
+
+  &.active .lang-link
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%)
+    color: #fff
+
+.lang-link
+  display: flex
+  align-items: center
+  gap: 10px
+  padding: 10px 14px
+  border-radius: 6px
+  color: #333
+  font-size: 14px
+  text-decoration: none
+  transition: all 0.2s ease
+
+  &:hover
+    background: #f5f5f5
+    padding-left: 18px
+
+.flag-icon
+  font-size: 16px
+  line-height: 1
+
+.lang-text
+  font-weight: 500
+
+/* Empty state styling */
+.no-posts
+  text-align: center
+  padding: 60px 20px
+  background: $custom-white
+  border-radius: 8px
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1)
+  margin-bottom: 40px
+
+.no-posts p
+  color: $custom-grey
+  font-size: 1.1em
+  margin: 0
+
+.en-empty-state
+  text-align: center
+  padding: 80px 20px
+  background: $custom-white
+  border-radius: 8px
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1)
+  margin: 40px auto
+
+.en-empty-state-icon
+  font-size: 60px
+  color: $custom-grey
+  margin-bottom: 20px
+  opacity: 0.6
+
+.en-empty-state-title
+  font-size: 1.5em
+  color: $custom-default
+  margin-bottom: 15px
+  font-weight: bold
+
+.en-empty-state-desc
+  color: $custom-grey
+  line-height: 1.6
+  max-width: 500px
+  margin: 0 auto
+
+/* Search styles */
+.search-form-wrap
+  position: relative
+  max-width: 600px
+  margin: 40px auto
+
+.search-result
+  margin-top: 20px
+
+.search-result-list
+  background: $custom-white
+  border-radius: 8px
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1)
+  overflow: hidden
+
+.search-result-item
+  padding: 20px
+  border-bottom: 1px solid $custom-border
+
+.search-result-item:last-child
+  border-bottom: none
+
+.search-result-title
+  color: $custom-default
+  font-size: 1.1em
+  font-weight: bold
+  display: block
+  margin-bottom: 8px
+  text-decoration: none
+
+.search-result-title:hover
+  color: $custom-link
+
+.search-result-content
+  color: $custom-grey
+  font-size: 0.9em
+  line-height: 1.5
+
+.search-no-result
+  text-align: center
+  padding: 40px
+  color: $custom-grey
+
+.search-form-input
+  width: 100%
+  padding: 12px 16px
+  font-size: 16px
+  border: 1px solid $custom-border
+  border-radius: 20px
+  outline: none
+  transition: border-color 0.2s
+  box-sizing: border-box
+
+.search-form-input:focus
+  border-color: $custom-link
+
+.search-form-submit
+  position: absolute
+  right: 10px
+  top: 50%
+  transform: translateY(-50%)
+  width: 36px
+  height: 36px
+  border: none
+  background: none
+  color: $custom-default
+  cursor: pointer
+  font-size: 16px
+  display: flex
+  align-items: center
+  justify-content: center
+  border-radius: 50%
+  transition: all 0.2s
+
+.search-form-submit:hover
+  background: $custom-bg
+  color: $custom-default
+
