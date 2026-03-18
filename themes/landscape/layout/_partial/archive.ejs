@@ -1,17 +1,55 @@
 <%
-  // Use passed posts or page.posts as fallback
-  var posts = (locals && locals.posts) || (page && page.posts);
+  // Get current language from page object
+  var currentLang = 'zh-CN';
+
+  if (typeof page !== 'undefined' && page && page.path && page.path.startsWith('en/')) {
+    currentLang = 'en';
+  }
+  // Check localStorage for browser environment
+  else if (typeof localStorage !== 'undefined' && typeof window !== 'undefined') {
+    var langFromStorage = localStorage.getItem('preferredLang');
+    if (langFromStorage === 'en' || langFromStorage === 'zh-CN') {
+      currentLang = 'en';
+    }
+  }
+%>
+<%
+  // Get all posts from different sources
+  var allPosts = [];
+  if (locals && locals.posts) {
+    allPosts = locals.posts.toArray ? locals.posts.toArray() : (locals.posts.all ? locals.posts.all() : Array.from(locals.posts));
+  } else if (page && page.posts) {
+    allPosts = page.posts.toArray ? page.posts.toArray() : (page.posts.all ? page.posts.all() : Array.from(page.posts));
+  } else if (locals && locals.site && locals.site.posts) {
+    allPosts = locals.site.posts.toArray ? locals.site.posts.toArray() : (locals.site.posts.all ? locals.site.posts.all() : Array.from(locals.site.posts));
+  }
+
+  // Filter posts by language
+  var filteredPosts = allPosts.filter(function(post) {
+    var postLang = post.lang;
+    if (!postLang) {
+      // Default language detection based on path
+      if (currentLang === 'en' && post.path && post.path.startsWith('en/')) {
+        postLang = 'en';
+      } else if (currentLang === 'zh-CN' && (!post.path || !post.path.startsWith('en/'))) {
+        postLang = 'zh-CN';
+      } else {
+        postLang = currentLang;
+      }
+    }
+    return (postLang === currentLang);
+  });
 %>
 <% if (expand){ %>
-  <% if (posts) { %>
-    <% posts.each(function(post){ %>
+  <% if (filteredPosts && filteredPosts.length) { %>
+    <% filteredPosts.forEach(function(post){ %>
       <%- partial('article', {post: post, index: true}) %>
     <% }) %>
   <% } %>
 <% } else { %>
-  <% if (posts) { %>
+  <% if (filteredPosts && filteredPosts.length) { %>
     <% var last; %>
-    <% posts.each(function(post, i){ %>
+    <% filteredPosts.forEach(function(post, i){ %>
       <% var year = post.date.year(); %>
       <% if (last != year){ %>
         <% if (last != null){ %>
@@ -26,7 +64,7 @@
       <% } %>
       <%- partial('archive-post', {post: post, even: i % 2 == 0}) %>
     <% }) %>
-    <% if (posts.length){ %>
+    <% if (filteredPosts.length){ %>
       </div></section>
     <% } %>
   <% } else { %>

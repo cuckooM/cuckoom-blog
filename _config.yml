@@ -29,6 +29,8 @@ archive_dir: archives
 category_dir: categories
 code_dir: downloads/code
 # i18n_dir: :lang
+# English posts directory (for multi-language support)
+en_posts_dir: source/en/_posts
 skip_render:
 
 # Writing
@@ -100,6 +102,21 @@ ignore:
 ## Plugins: https://hexo.io/plugins/
 ## Themes: https://hexo.io/themes/
 theme: landscape
+
+# Deployment
+## Docs: https://hexo.io/docs/one-command-deployment
+deploy:
+  type: rsync
+  host: 47.98.148.158
+  user: root
+  root: /var/www/cuckoom.com
+  port:
+  delete: true
+  artifact:
+  include:
+  exclude:
+  verbose: false
+  ignore_errors: false
 
 # Theme Configuration
 theme_config:

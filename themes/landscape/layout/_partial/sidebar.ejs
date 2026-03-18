@@ -1,5 +1,15 @@
+<%
+  // Get page path and language from layout
+  // sidebar_page_path is passed from layout and indicates which language index to show
+  var currentPagePath = sidebar_page_path || '';
+  var currentPageLang = 'zh-CN';
+
+  if (currentPagePath && currentPagePath.startsWith('en/')) {
+    currentPageLang = 'en';
+  }
+%>
 <aside id="sidebar"<% if (theme.sidebar === 'bottom'){ %> class="outer"<% } %>>
   <% theme.widgets.forEach(function(widget){ %>
-    <%- partial('_widget/' + widget) %>
+    <%- partial('_widget/' + widget, {pagePath: currentPagePath}) %>
   <% }) %>
 </aside>
