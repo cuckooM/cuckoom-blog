@@ -4,6 +4,15 @@
   <h2 class="widget-title">分类列表</h2>
   <div class="widget">
     <ul class="category-list">
+      <% if (page.category_names) { %>
+        <% page.category_names.forEach(function(catName){ %>
+        <li class="category-list-item">
+          <a class="category-list-link" href="<%- url_for('en/categories/' + catName + '/') %>">
+            <%= catName %>
+          </a>
+        </li>
+        <% }); %>
+      <% } else { %>
       <% site.categories.each(function(cat){ %>
       <li class="category-list-item">
         <a class="category-list-link" href="<%- url_for(cat.path) %>">
@@ -12,6 +21,7 @@
         </a>
       </li>
       <% }); %>
+      <% } %>
     </ul>
   </div>
 </div>

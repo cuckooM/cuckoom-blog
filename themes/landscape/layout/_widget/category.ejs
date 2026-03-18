@@ -2,7 +2,19 @@
   <div class="widget-wrap">
     <h3 class="widget-title"><%= __('categories') %></h3>
     <div class="widget">
+      <% if (page.section === 'en' && page.category_names) { %>
+        <ul class="category-list">
+          <% page.category_names.forEach(function(catName){ %>
+          <li class="category-list-item">
+            <a class="category-list-link" href="<%- url_for('en/categories/' + catName + '/') %>">
+              <%= catName %>
+            </a>
+          </li>
+          <% }); %>
+        </ul>
+      <% } else { %>
       <%- list_categories({show_count: theme.show_count}) %>
+      <% } %>
     </div>
   </div>
 <% } %>

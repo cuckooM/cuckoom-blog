@@ -1,10 +1,19 @@
-<% if (post.categories && post.categories.length){ %>
+<% if (post.categories && Array.isArray(post.categories) && post.categories.length){ %>
   <div class="article-category">
-    <%- list_categories(post.categories, {
-      show_count: false,
-      class: 'article-category',
-      style: 'none',
-      separator: '►'
-    }) %>
+    <%
+      post.categories.forEach(function(cat, i) {
+        if (i > 0) { %>
+          <span class="article-category-separator">►</span>
+        <% }
+      }); %>
+    <ul class="article-category-list">
+      <% post.categories.forEach(function(cat){ %>
+        <li class="article-category-list-item">
+          <a class="article-category-list-link" href="<%- url_for('/categories#' + cat.toLowerCase()) %>">
+            <%= cat %>
+          </a>
+        </li>
+      <% }) %>
+    </ul>
   </div>
 <% } %>

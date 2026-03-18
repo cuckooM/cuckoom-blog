@@ -2,11 +2,12 @@
 title: About
 date: 2024-01-01 00:00:00
 type: "page"
+lang: en
 ---
 
 ## About Me
 
-Welcome to my technical blog! This blog mainly shares content on web development, technical practices, and solutions.
+Welcome to my technical blog! This is where I share content primarily focused on web development, technical practices, and solutions.
 
 ## Contact
 
@@ -23,7 +24,7 @@ Welcome to my technical blog! This blog mainly shares content on web development
 - Java
 - Node.js
 
-### DevOps
+### DevOps & Deployment
 - Kubernetes (k8s)
 - Docker
 - Linux

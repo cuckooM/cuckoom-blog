@@ -1,47 +1,47 @@
 ---
-title: PostgreSQL 数据库配置 SSL 双向认证，并通过 Spring 访问
+title: PostgreSQL SSL Mutual Authentication and Spring Access
 date: 2026-03-16 18:00:00
 updated: 2026-03-16 18:00:00
-lang: zh-CN
+lang: en
 slug: postgresql-ssl-double-authentication
 categories:
-  - 数据库
+  - Database
 tags:
   - PostgreSQL
   - SSL
   - Spring Boot
-  - 双向认证
-description: 详细配置 PostgreSQL 数据库 SSL 双向认证并通过 Spring Boot 应用访问的指南
-keywords: PostgreSQL,SSL,双向认证,Spring Boot,数据库安全
+  - Mutual Authentication
+description: A detailed guide on configuring PostgreSQL database SSL mutual authentication and accessing it through Spring Boot application
+keywords: PostgreSQL,SSL,Mutual Authentication,Spring Boot,Database Security
 ---
 
-## 生成证书
+## Generate Certificates
 
-### 1. 服务器端生成三个文件
+### 1. Generate Three Files for the Server Side
 
-- `root.crt` (可信根证书)
-- `server.crt` (服务器证书)
-- `server.key` (私钥)
+- `root.crt` (Trusted root certificate)
+- `server.crt` (Server certificate)
+- `server.key` (Private key)
 
-#### 生成私钥（需要设置密码）
+#### Generate Private Key (requires setting a password)
 
 ```bash
 openssl genrsa -des3 -out server.key 2048
 ```
 
-#### 移除密码（需要输入上一步设置的密码）
+#### Remove Password (requires entering the password from the previous step)
 
 ```bash
 openssl rsa -in server.key -out server.key
 ```
 
-#### 创建服务器证书
+#### Create Server Certificate
 
 ```bash
 openssl req -new -key server.key -days 3650 -out server.crt -x509
 ```
 
-执行过程中需要输入以下信息：
+During execution, you need to enter the following information:
 
 ```
 Country Name (2 letter code) [AU]:CN
@@ -53,9 +53,9 @@ Common Name (e.g. server FQDN or YOUR name) []:127.0.0.1
 Email Address []:
 ```
 
-> 注意："Common Name" 应该写为服务器的 IP 地址或域名。
+> Note: "Common Name" should be written as the server's IP address or domain name.
 
-#### 由于是自签名，服务器证书可作为可信根证书
+#### Since this is self-signed, the server certificate can be used as the trusted root certificate
 
 ```bash
 cp server.crt root.crt
@@ -63,31 +63,31 @@ cp server.crt root.crt
 
 ---
 
-### 2. 客户端生成三个文件
+### 2. Generate Three Files for the Client Side
 
-- `root.crt` (可信根证书，已在服务器端生成)
-- `client.crt` (客户端证书)
-- `client.key` (私钥)
+- `root.crt` (Trusted root certificate, already generated on the server side)
+- `client.crt` (Client certificate)
+- `client.key` (Private key)
 
-#### 生成私钥（需要设置密码）
+#### Generate Private Key (requires setting a password)
 
 ```bash
 openssl genrsa -des3 -out client.key 2048
 ```
 
-#### 移除密码（需要输入上一步设置的密码）
+#### Remove Password (requires entering the password from the previous step)
 
 ```bash
 openssl rsa -in client.key -out client.key
 ```
 
-#### 创建客户端证书
+#### Create Client Certificate
 
 ```bash
 openssl req -new -key client.key -out client.csr
 ```
 
-执行过程中需要输入以下信息：
+During execution, you need to enter the following information:
 
 ```
 Country Name (2 letter code) [AU]:CN
@@ -99,9 +99,9 @@ Common Name (e.g. server FQDN or YOUR name) []:blog
 Email Address []:
 ```
 
-> 注意："Common Name" 应该设置为要连接的数据库用户名。
+> Note: "Common Name" should be set to the database username you will connect to.
 
-#### 转换格式。将 PEM 格式的密钥转换为 DER 格式。
+#### Convert Format. Convert PEM format key to DER format.
 
 ```bash
 openssl pkcs8 -topk8 -inform PEM -in client.key -outform DER -nocrypt -out client.pk8
@@ -109,9 +109,9 @@ openssl pkcs8 -topk8 -inform PEM -in client.key -outform DER -nocrypt -out clien
 
 ---
 
-### 3. 文件总结
+### 3. File Summary
 
-完成上述步骤后，我们为服务器和客户端生成了以下文件：
+After the above steps, we have generated seven files for the server and client:
 
 - `client.crt`
 - `client.csr`
@@ -123,11 +123,11 @@ openssl pkcs8 -topk8 -inform PEM -in client.key -outform DER -nocrypt -out clien
 
 ---
 
-## 服务器配置
+## Server Configuration
 
 ### 1. pg_hba.conf
 
-添加以下内容：
+Add the following content:
 
 ```
 hostssl   all             all             0.0.0.0/0               cert
@@ -136,7 +136,7 @@ hostssl   all             all             ::1/128                 cert
 
 ### 2. postgresql.conf
 
-修改以下配置：
+Modify the following configuration:
 
 ```
 ssl = on
@@ -147,7 +147,7 @@ ssl_key_file = '/etc/postgresql/certs/server.key'
 
 ---
 
-## 客户端配置
+## Client Configuration
 
 ### Spring Boot application.yml
 
@@ -162,12 +162,12 @@ spring:
 
 ---
 
-## 验证配置
+## Verify Configuration
 
-连接成功后，可以使用以下 SQL 验证 SSL 连接：
+After a successful connection, you can verify the SSL connection using the following SQL:
 
 ```sql
 SELECT * FROM pg_stat_ssl;
 ```
 
-如果连接使用了 SSL，将显示相应的 SSL 信息。
+If the connection uses SSL, it will display the corresponding SSL information.
