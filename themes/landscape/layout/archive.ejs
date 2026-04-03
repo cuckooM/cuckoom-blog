@@ -1,1 +1,8 @@
-<%- partial('_partial/archive', {expand: false, index: true, posts: locals.posts || site.posts}) %>
+<%
+  // Check if current page is English
+  var currentLang = 'zh-CN';
+  if (typeof page !== 'undefined' && page && page.path && page.path.startsWith('en/')) {
+    currentLang = 'en';
+  }
+%>
+<%- partial('_partial/archive', {expand: false, index: true, posts: locals.posts || site.posts, lang: currentLang}) %>

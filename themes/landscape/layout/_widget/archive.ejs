@@ -2,7 +2,43 @@
   <div class="widget-wrap">
     <h3 class="widget-title"><%= __('archive_a') %></h3>
     <div class="widget">
-      <%- list_archives({show_count: theme.show_count, type: theme.archive_type}) %>
+      <ul class="archive-list">
+        <%
+        // Group posts by year and month
+        var archives = {};
+        site.posts.forEach(function(post) {
+          var year = post.date.year();
+          var month = post.date.format('MM');
+          if (!archives[year]) archives[year] = {};
+          if (!archives[year][month]) archives[year][month] = [];
+          archives[year][month].push(post);
+        });
+
+        // Get current language from page object
+        var currentLang = 'zh-CN';
+        if (typeof page !== 'undefined' && page && page.path && page.path.startsWith('en/')) {
+          currentLang = 'en';
+        }
+
+        // Generate language prefix
+        var langPrefix = currentLang === 'en' ? 'en/' : '';
+
+        // Get month names in current language
+        var monthNames = currentLang === 'en'
+          ? ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+          : ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+        %>
+        <% for (var year in archives) { %>
+          <% var months = archives[year]; %>
+          <% for (var month in months) { %>
+            <li class="archive-list-item">
+              <a class="archive-list-link" href="<%- url_for(langPrefix + 'archives/' + year + '/' + month + '/') %>">
+                <%= monthNames[parseInt(month) - 1] %> <%- year %>
+              </a>
+            </li>
+          <% } %>
+        <% } %>
+      </ul>
     </div>
   </div>
 <% } %>
