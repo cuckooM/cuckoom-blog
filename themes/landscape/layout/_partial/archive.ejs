@@ -12,19 +12,42 @@
       currentLang = 'en';
     }
   }
-%>
-<%
+
+  // Get year and month from page if it's an archive page
+  var archiveYear = page && page.year ? parseInt(page.year) : null;
+  var archiveMonth = page && page.month ? parseInt(page.month) : null;
+
+  // Also check from path if not found in page variables
+  if (!archiveYear && page && page.path) {
+    var pathParts = page.path.split('/').filter(p => p);
+    // Path format: en/archives/2026/03/ or archives/2026/03/
+    for (var i = 0; i < pathParts.length - 1; i++) {
+      if (pathParts[i] === 'archives' || pathParts[i] === 'archive') {
+        var next = pathParts[i + 1];
+        if (/^\d{4}$/.test(next)) {
+          archiveYear = parseInt(next);
+          var afterNext = pathParts[i + 2];
+          if (/^\d{2}$/.test(afterNext)) {
+            archiveMonth = parseInt(afterNext);
+          }
+          break;
+        }
+      }
+    }
+  }
+
   // Get all posts from different sources
   var allPosts = [];
-  if (locals && locals.posts) {
-    allPosts = locals.posts.toArray ? locals.posts.toArray() : (locals.posts.all ? locals.posts.all() : Array.from(locals.posts));
-  } else if (page && page.posts) {
+  // Use page.posts as primary source if available (Hexo sets this for archive pages)
+  if (page && page.posts) {
     allPosts = page.posts.toArray ? page.posts.toArray() : (page.posts.all ? page.posts.all() : Array.from(page.posts));
+  } else if (locals && locals.posts && locals.posts.length > 0) {
+    allPosts = locals.posts.toArray ? locals.posts.toArray() : (locals.posts.all ? locals.posts.all() : Array.from(locals.posts));
   } else if (locals && locals.site && locals.site.posts) {
     allPosts = locals.site.posts.toArray ? locals.site.posts.toArray() : (locals.site.posts.all ? locals.site.posts.all() : Array.from(locals.site.posts));
   }
 
-  // Filter posts by language
+  // Filter posts by language and date
   var filteredPosts = allPosts.filter(function(post) {
     var postLang = post.lang;
     if (!postLang) {
@@ -37,7 +60,18 @@
         postLang = currentLang;
       }
     }
-    return (postLang === currentLang);
+    var langMatch = (postLang === currentLang);
+
+    // Filter by date if on archive page
+    var dateMatch = true;
+    if (archiveYear) {
+      var postYear = post.date.year();
+      var postMonth = post.date.month() + 1; // Hexo month is 0-based
+      // Convert both to strings for comparison (month might be "03" or 3, or 03 vs 3)
+      dateMatch = (postYear === archiveYear) && (String(postMonth) === String(archiveMonth));
+    }
+
+    return langMatch && dateMatch;
   });
 %>
 <% if (expand){ %>
