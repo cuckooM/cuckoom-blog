@@ -10,36 +10,51 @@ hexo.extend.generator.register('post', function(locals) {
   const result = [];
 
   allPosts.forEach(function(post) {
-    // Create a copy with modified path for English posts
-    const postCopy = Object.assign({}, post, {
-      path: post.path
-    });
-
     // For English posts, modify path to add en/ prefix and remove en- from slug
-    if (postCopy.lang === 'en') {
-      // Parse current path to extract date components
+    if (post.lang === 'en') {
+      // Extract date components from the original path
+      // Hexo default path format: YYYY/MM/DD/slug/
       const parts = post.path.split('/').filter(p => p);
 
-      if (parts.length >= 3) {
+      if (parts.length >= 4) {
         const year = parts[0];
         const month = parts[1];
         const day = parts[2];
 
-        // Get slug from front-matter and remove 'en-' prefix
-        let slug = post.slug || post.title_path || post.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        // Get slug from the last part before trailing slash
+        let slug = parts[3];
+
+        // Remove 'en-' prefix if present
         if (slug.startsWith('en-')) {
           slug = slug.substring(3);
         }
 
         // Construct new path with en/ prefix
-        postCopy.path = `en/${year}/${month}/${day}/${slug}/`;
+        const newPath = `en/${year}/${month}/${day}/${slug}/`;
+
+        // Since post.path is a getter, use Object.defineProperty to override it
+        Object.defineProperty(post, 'path', {
+          value: newPath,
+          writable: false,
+          enumerable: true,
+          configurable: true
+        });
+
+        // Also update the slug by defining a custom property
+        // This ensures the slug is correct for API and internal use
+        Object.defineProperty(post, 'slug', {
+          value: slug,
+          writable: false,
+          enumerable: true,
+          configurable: true
+        });
       }
     }
 
     result.push({
-      path: postCopy.path,
-      layout: postCopy.layout,
-      data: postCopy
+      path: post.path,
+      layout: post.layout,
+      data: post
     });
   });
 
@@ -280,9 +295,6 @@ hexo.extend.generator.register('en_categories', function(locals) {
     const tag = locals.site?.tags?.find(t => t.name === tagName);
     return tag || { name: tagName, path: '/tags/' + tagName + '/', length: tags[tagName] };
   });
-
-  // Debug output
-  console.log('en_categories generator: enCategoryNames =', enCategoryNames, 'enTagNames =', enTagNames);
 
   // Generate main categories index page (list of categories)
   // Store category names in data for template

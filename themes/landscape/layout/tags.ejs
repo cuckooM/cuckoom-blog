@@ -17,7 +17,8 @@
         <% page.tag_names.forEach(function(tagObj){ %>
         <li class="tag-list-item">
           <% var tagName = typeof tagObj === 'string' ? tagObj : tagObj.name; %>
-          <a class="tag-list-link" href="<%- url_for('en/tags/' + tagName + '/') %>" rel="tag">
+          <% var tagPath = page.section === 'en' ? 'en/tags/' + tagName + '/' : 'tags/' + tagName + '/'; %>
+          <a class="tag-list-link" href="<%- url_for(tagPath) %>" rel="tag">
             <%= tagName %>
           </a>
         </li>
