@@ -7,14 +7,10 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    runs-on: cuckoom
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -28,10 +24,6 @@ jobs:
       - name: Generate static files
         run: npm run build
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./public
-          user_name: 'github-actions[bot]'
-          user_email: 'github-actions[bot]@users.noreply.github.com'
+      - name: Deploy to server via rsync
+        run: |
+          rsync -avz --delete ./public/ root@47.98.148.158:/var/www/cuckoom.com/

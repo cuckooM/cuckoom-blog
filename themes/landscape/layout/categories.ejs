@@ -4,23 +4,24 @@
   <h2 class="widget-title">分类列表</h2>
   <div class="widget">
     <ul class="category-list">
-      <% if (page.category_names) { %>
+      <% if (page.category_names && Array.isArray(page.category_names)) { %>
         <% page.category_names.forEach(function(catName){ %>
         <li class="category-list-item">
-          <a class="category-list-link" href="<%- url_for('en/categories/' + catName + '/') %>">
+          <% var catPath = page.section === 'en' ? 'en/categories/' + catName + '/' : 'categories/' + catName + '/'; %>
+          <a class="category-list-link" href="<%- url_for(catPath) %>">
             <%= catName %>
           </a>
         </li>
         <% }); %>
       <% } else { %>
-      <% site.categories.each(function(cat){ %>
+        <% site.categories.each(function(cat){ %>
       <li class="category-list-item">
         <a class="category-list-link" href="<%- url_for(cat.path) %>">
           <%= cat.name %>
           <span class="category-count"><%= cat.posts.length %></span>
         </a>
       </li>
-      <% }); %>
+        <% }); %>
       <% } %>
     </ul>
   </div>
