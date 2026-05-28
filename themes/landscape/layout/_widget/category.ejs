@@ -2,18 +2,54 @@
   <div class="widget-wrap">
     <h3 class="widget-title"><%= __('categories') %></h3>
     <div class="widget">
-      <% if (page.section === 'en' && page.category_names && Array.isArray(page.category_names)) { %>
+      <%
+         // 分离中文和英文分类
+         var chineseCategories = [];
+         var englishCategories = [];
+
+         site.categories.each(function(category) {
+           var name = category.name;
+           // 检测是否包含中文字符
+           if (/[\u4e00-\u9fa5]/.test(name)) {
+             chineseCategories.push(category);
+           } else {
+             englishCategories.push(category);
+           }
+         });
+      %>
+
+      <!-- 英文分类 -->
+      <% if (englishCategories.length > 0) { %>
+        <h4 class="language-section">English Categories</h4>
         <ul class="category-list">
-          <% page.category_names.forEach(function(catName){ %>
+          <% englishCategories.forEach(function(category){ %>
           <li class="category-list-item">
-            <a class="category-list-link" href="<%- url_for('en/categories/' + catName + '/') %>">
-              <%= catName %>
+            <a class="category-list-link" href="<%- url_for(category.path) %>">
+              <%= category.name %>
             </a>
+            <% if (theme.show_count){ %>
+            <span class="category-list-count"><%= category.length %></span>
+            <% } %>
           </li>
           <% }); %>
         </ul>
-      <% } else { %>
-      <%- list_categories({show_count: theme.show_count}) %>
+      <% } %>
+
+      <!-- 中文分类 -->
+      <% if (chineseCategories.length > 0) { %>
+        <h4 class="language-section">中文分类</h4>
+        <ul class="category-list">
+          <% chineseCategories.forEach(function(category){ %>
+          <li class="category-list-item">
+            <a class="category-list-link" href="<%- url_for(category.path) %>">
+              <%= category.name %>
+            </a>
+            <% if (theme.show_count){ %>
+            <span class="category-list-count"><%= category.length %></span>
+            <% } %>
+          </li>
+          <% }); %>
+        </ul>
       <% } %>
     </div>
   </div>
