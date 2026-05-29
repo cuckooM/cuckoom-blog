@@ -10,42 +10,23 @@
   else if (typeof page !== 'undefined' && page && page.path && page.path.startsWith('en/')) {
     currentLang = 'en';
   }
-  // Check localStorage for browser environment
-  else if (typeof localStorage !== 'undefined' && typeof window !== 'undefined') {
-    var langFromStorage = localStorage.getItem('preferredLang');
-    if (langFromStorage === 'en' || langFromStorage === 'zh-CN') {
-      currentLang = langFromStorage;
-    }
-  }
 %>
 <%
-  // Get all posts from different sources
-  var allPosts = [];
-  if (page && page.posts && page.posts.toArray) {
-    allPosts = page.posts.toArray();
-  } else if (locals && locals.posts) {
-    allPosts = locals.posts.toArray ? locals.posts.toArray() : (locals.posts.all ? locals.posts.all() : Array.from(locals.posts));
-  } else if (site && site.posts) {
-    allPosts = site.posts.toArray ? site.posts.toArray() : (site.posts.all ? site.posts.all() : Array.from(site.posts));
-  }
+  // Get all posts from the site
+  var allPosts = site.posts.toArray();
 
-  // Filter posts by language
+  // Filter posts by language based on the current page context
   var filteredPosts = allPosts.filter(function(post) {
-    var postLang = post.lang;
-    if (!postLang) {
-      // Default language detection based on path
-      if (currentLang === 'en' && post.path && post.path.startsWith('en/')) {
-        postLang = 'en';
-      } else if (currentLang === 'zh-CN' && (!post.path || !post.path.startsWith('en/'))) {
-        postLang = 'zh-CN';
-      } else {
-        postLang = currentLang;
-      }
-    }
-    return (postLang === currentLang);
+    var postLang = post.lang || 'zh-CN'; // Default to Chinese if no lang specified
+    return (currentLang === 'en') ? (postLang === 'en') : (postLang !== 'en');
   });
 
-  var limitedPosts = filteredPosts.slice(0, theme.recent_posts_limits);
+  // Sort by date (most recent first) and limit
+  var sortedPosts = filteredPosts.sort(function(a, b) {
+    return b.date - a.date;
+  });
+
+  var limitedPosts = sortedPosts.slice(0, theme.recent_posts_limits || 5);
 %>
 <% if (limitedPosts.length){ %>
   <div class="widget-wrap">

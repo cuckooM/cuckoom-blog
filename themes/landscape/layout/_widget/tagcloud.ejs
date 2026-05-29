@@ -3,54 +3,35 @@
     <h3 class="widget-title"><%= __('tagcloud') %></h3>
     <div class="widget tagcloud">
       <%
-         // 分离中文和英文标签
-         var chineseTags = [];
-         var englishTags = [];
+         // Determine current language context based on path
+         var currentPath = typeof pagePath !== 'undefined' ? pagePath : (page && page.path ? page.path : '');
+         var isEnglishPage = currentPath && currentPath.startsWith('en/');
 
-         site.tags.each(function(tag) {
-           var name = tag.name;
-           // 检测是否包含中文字符
-           if (/[\u4e00-\u9fa5]/.test(name)) {
-             chineseTags.push(tag);
-           } else {
-             englishTags.push(tag);
-           }
-         });
+         // Get tags based on language context using our helper
+         var filteredTags = isEnglishPage ?
+           getLangSpecificTags() :
+           site.tags.toArray().filter(function(tag) {
+             return /[\u4e00-\u9fa5]/.test(tag.name);
+           });
+
+         // Calculate min and max counts for font size calculation
+         if (filteredTags.length > 0) {
+           var counts = filteredTags.map(function(tag) { return tag.length; });
+           var minCount = Math.min.apply(Math, counts);
+           var maxCount = Math.max.apply(Math, counts);
+           var minFont = 12;
+           var maxFont = 24;
+
+           // Generate tag cloud manually
+           filteredTags.forEach(function(tag) {
+             var ratio = (maxCount === minCount) ? 1 : (tag.length - minCount) / (maxCount - minCount);
+             var fontSize = minFont + (maxFont - minFont) * ratio;
       %>
-
-      <!-- 英文标签云 -->
-      <% if (englishTags.length > 0) { %>
-        <h4 class="language-section">English Tags</h4>
-        <div class="tagcloud-section">
-          <%- tagcloud({
-            min_font: 12,
-            max_font: 24,
-            amount: 30,
-            unit: 'px',
-            span_style: 'display: inline-block; margin: 4px 6px 4px 0;',
-            list_class: 'tagcloud-list',
-            item_class: 'tagcloud-item',
-            selected_tags: englishTags
-          }) %>
-        </div>
-      <% } %>
-
-      <!-- 中文标签云 -->
-      <% if (chineseTags.length > 0) { %>
-        <h4 class="language-section">中文标签</h4>
-        <div class="tagcloud-section">
-          <%- tagcloud({
-            min_font: 12,
-            max_font: 24,
-            amount: 30,
-            unit: 'px',
-            span_style: 'display: inline-block; margin: 4px 6px 4px 0;',
-            list_class: 'tagcloud-list',
-            item_class: 'tagcloud-item',
-            selected_tags: chineseTags
-          }) %>
-        </div>
-      <% } %>
+             <a href="<%= url_for(tag.path) %>" style="font-size: <%= fontSize %>px;"><%= tag.name %></a>
+      <%
+           });
+         }
+      %>
     </div>
   </div>
 <% } %>
