@@ -3,43 +3,21 @@
     <h3 class="widget-title"><%= __('categories') %></h3>
     <div class="widget">
       <%
-         // 分离中文和英文分类
-         var chineseCategories = [];
-         var englishCategories = [];
+         // Determine current language context based on path
+         var currentPath = typeof pagePath !== 'undefined' ? pagePath : (page && page.path ? page.path : '');
+         var isEnglishPage = currentPath && currentPath.startsWith('en/');
 
-         site.categories.each(function(category) {
-           var name = category.name;
-           // 检测是否包含中文字符
-           if (/[\u4e00-\u9fa5]/.test(name)) {
-             chineseCategories.push(category);
-           } else {
-             englishCategories.push(category);
-           }
-         });
+         // Get categories based on language context using our helper
+         var filteredCategories = isEnglishPage ?
+           getLangSpecificCategories('en') :
+           site.categories.toArray().filter(function(category) {
+             return /[\u4e00-\u9fa5]/.test(category.name);
+           });
       %>
 
-      <!-- 英文分类 -->
-      <% if (englishCategories.length > 0) { %>
-        <h4 class="language-section">English Categories</h4>
+      <% if (filteredCategories.length > 0) { %>
         <ul class="category-list">
-          <% englishCategories.forEach(function(category){ %>
-          <li class="category-list-item">
-            <a class="category-list-link" href="<%- url_for(category.path) %>">
-              <%= category.name %>
-            </a>
-            <% if (theme.show_count){ %>
-            <span class="category-list-count"><%= category.length %></span>
-            <% } %>
-          </li>
-          <% }); %>
-        </ul>
-      <% } %>
-
-      <!-- 中文分类 -->
-      <% if (chineseCategories.length > 0) { %>
-        <h4 class="language-section">中文分类</h4>
-        <ul class="category-list">
-          <% chineseCategories.forEach(function(category){ %>
+          <% filteredCategories.forEach(function(category){ %>
           <li class="category-list-item">
             <a class="category-list-link" href="<%- url_for(category.path) %>">
               <%= category.name %>

@@ -3,43 +3,21 @@
     <h3 class="widget-title"><%= __('tags') %></h3>
     <div class="widget">
       <%
-         // 分离中文和英文标签
-         var chineseTags = [];
-         var englishTags = [];
+         // Determine current language context based on path
+         var currentPath = typeof pagePath !== 'undefined' ? pagePath : (page && page.path ? page.path : '');
+         var isEnglishPage = currentPath && currentPath.startsWith('en/');
 
-         site.tags.each(function(tag) {
-           var name = tag.name;
-           // 检测是否包含中文字符
-           if (/[\u4e00-\u9fa5]/.test(name)) {
-             chineseTags.push(tag);
-           } else {
-             englishTags.push(tag);
-           }
-         });
+         // Get tags based on language context using our helper
+         var filteredTags = isEnglishPage ?
+           getLangSpecificTags('en') :
+           site.tags.toArray().filter(function(tag) {
+             return /[\u4e00-\u9fa5]/.test(tag.name);
+           });
       %>
 
-      <!-- 英文标签 -->
-      <% if (englishTags.length > 0) { %>
-        <h4 class="language-section">English Tags</h4>
+      <% if (filteredTags.length > 0) { %>
         <ul class="tag-list" itemprop="keywords">
-          <% englishTags.forEach(function(tag){ %>
-          <li class="tag-list-item">
-            <a class="tag-list-link" href="<%- url_for(tag.path) %>" rel="tag">
-              <%= tag.name %>
-            </a>
-            <% if (theme.show_count){ %>
-            <span class="tag-list-count"><%= tag.length %></span>
-            <% } %>
-          </li>
-          <% }); %>
-        </ul>
-      <% } %>
-
-      <!-- 中文标签 -->
-      <% if (chineseTags.length > 0) { %>
-        <h4 class="language-section">中文标签</h4>
-        <ul class="tag-list" itemprop="keywords">
-          <% chineseTags.forEach(function(tag){ %>
+          <% filteredTags.forEach(function(tag){ %>
           <li class="tag-list-item">
             <a class="tag-list-link" href="<%- url_for(tag.path) %>" rel="tag">
               <%= tag.name %>
