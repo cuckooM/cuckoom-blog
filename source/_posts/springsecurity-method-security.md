@@ -21,6 +21,8 @@ Spring Security 提供了三种类型的注解来实现方法级别的权限控�
 2. **@Secured 注解**：Spring Security 原生注解
 3. **基于表达式（Spring EL）的注解**：功能最强大的注解类型
 
+<!-- more -->
+
 通过 `@EnableGlobalMethodSecurity` 注解的参数来开启相应的注解支持。
 
 ```java
