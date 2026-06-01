@@ -23,6 +23,8 @@ keywords: PostgreSQL,SSL,双向认证,Spring Boot,数据库安全
 - `server.crt` (服务器证书)
 - `server.key` (私钥)
 
+<!-- more -->
+
 #### 生成私钥（需要设置密码）
 
 ```bash

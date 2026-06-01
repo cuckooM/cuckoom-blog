@@ -1,1 +1,100 @@
-<%- partial('_partial/archive', {expand: true, index: true, posts: locals.posts || site.posts}) %>
+<%
+  // Determine current language
+  var currentLang = 'zh-CN';
+  if (page && page.path && page.path.startsWith('en/')) {
+    currentLang = 'en';
+  }
+
+  // Get posts for this language
+  var allPosts = (locals && locals.posts ? locals.posts.toArray() : (site.posts ? site.posts.toArray() : []));
+  var filteredPosts = allPosts.filter(function(post) {
+    if (currentLang === 'en') {
+      return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+    }
+    return post.lang !== 'en';
+  });
+  var posts = filteredPosts;
+%>
+
+<!-- Hero Section (Full) -->
+<section class="hero-section hero-full">
+  <div class="hero-content">
+    <h1 class="hero-title"><%= config.title %></h1>
+    <% if (theme.subtitle || config.subtitle) { %>
+    <p class="hero-subtitle"><%= theme.subtitle || config.subtitle %></p>
+    <% } %>
+    <% if (currentLang === 'zh-CN') { %>
+    <p class="hero-description">一个关于编程、技术和生活的个人博客</p>
+    <% } else { %>
+    <p class="hero-description">A personal blog about coding, technology & life</p>
+    <% } %>
+  </div>
+</section>
+
+<!-- Article Cards -->
+<div class="article-card-list">
+  <% if (posts && posts.length) { %>
+    <% posts.forEach(function(post) { %>
+      <article class="article-card">
+        <!-- Card Title -->
+        <h2 class="card-title">
+          <a href="<%- url_for(post.path) %>"><%= post.title || '(no title)' %></a>
+        </h2>
+
+        <!-- Card Meta -->
+        <div class="card-meta">
+          <span class="meta-item"><%- date(post.date, 'YYYY-MM-DD') %></span>
+          <% if (post.categories && post.categories.length) { %>
+            <span class="meta-item">
+              <a href="<%- url_for(post.categories.data[0].path) %>"><%= post.categories.data[0].name %></a>
+            </span>
+          <% } %>
+        </div>
+
+        <!-- Card Excerpt -->
+        <% if (post.excerpt) { %>
+        <div class="card-excerpt">
+          <%- post.excerpt %>
+        </div>
+        <% } else if (post.content) { %>
+        <div class="card-excerpt">
+          <%- post.content.substring(0, 200) %><% if (post.content.length > 200) { %>...<% } %>
+        </div>
+        <% } %>
+
+        <!-- Card Tags -->
+        <% if (post.tags && post.tags.length) { %>
+        <div class="card-tags">
+          <% post.tags.forEach(function(tag) { %>
+          <a href="<%- url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
+          <% }) %>
+        </div>
+        <% } %>
+
+        <!-- Read More -->
+        <div class="card-read-more">
+          <a href="<%- url_for(post.path) %>"><%- currentLang === 'en' ? 'Read More &rarr;' : '阅读更多 &rarr;' %></a>
+        </div>
+      </article>
+    <% }); %>
+  <% } else { %>
+    <div class="article-card">
+      <% if (currentLang === 'en') { %>
+      <p>No posts yet. Check back soon!</p>
+      <% } else { %>
+      <p>暂无文章，敬请期待！</p>
+      <% } %>
+    </div>
+  <% } %>
+</div>
+
+<!-- Pagination -->
+<% if (page && page.total > 1) { %>
+<nav class="pagination">
+  <%- paginator({
+    prev_text: '&laquo; ' + (currentLang === 'en' ? 'Prev' : '上一页'),
+    next_text: (currentLang === 'en' ? 'Next' : '下一页') + ' &raquo;',
+    escape: false
+  }) %>
+</nav>
+<% } %>

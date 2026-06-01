@@ -1,1 +1,63 @@
-<%- partial('_partial/archive', {expand: false, index: true}) %>
+<%
+  var currentLang = 'zh-CN';
+  if (page && page.path && page.path.startsWith('en/')) {
+    currentLang = 'en';
+  }
+
+  // Get posts for this category
+  var allPosts = (locals && locals.posts ? locals.posts.toArray() : (site.posts ? site.posts.toArray() : []));
+  var filteredPosts = allPosts.filter(function(post) {
+    var langMatch = (currentLang === 'en')
+      ? (post.lang === 'en' || (post.path && post.path.startsWith('en/')))
+      : (post.lang !== 'en');
+    return langMatch && post.categories && post.categories.some(function(c) { return c.name === page.category; });
+  });
+%>
+
+<!-- Simplified Hero -->
+<section class="hero-section hero-simple">
+  <div class="hero-content">
+    <h1 class="hero-title"><%= page.category %></h1>
+    <p class="hero-description"><%= filteredPosts.length %> <%= currentLang === 'en' ? 'posts' : '篇文章' %></p>
+  </div>
+</section>
+
+<!-- Article Cards -->
+<div class="article-card-list">
+  <% if (filteredPosts && filteredPosts.length) { %>
+    <% filteredPosts.forEach(function(post) { %>
+      <article class="article-card">
+        <h2 class="card-title">
+          <a href="<%- url_for(post.path) %>"><%= post.title || '(no title)' %></a>
+        </h2>
+        <div class="card-meta">
+          <span class="meta-item"><%- date(post.date, 'YYYY-MM-DD') %></span>
+          <% if (post.categories && post.categories.length) { %>
+            <span class="meta-item">
+              <a href="<%- url_for(post.categories.data[0].path) %>"><%= post.categories.data[0].name %></a>
+            </span>
+          <% } %>
+        </div>
+        <% if (post.excerpt) { %>
+        <div class="card-excerpt">
+          <%- post.excerpt %>
+        </div>
+        <% } %>
+        <% if (post.tags && post.tags.length) { %>
+        <div class="card-tags">
+          <% post.tags.forEach(function(tag) { %>
+          <a href="<%- url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
+          <% }) %>
+        </div>
+        <% } %>
+        <div class="card-read-more">
+          <a href="<%- url_for(post.path) %>"><%- currentLang === 'en' ? 'Read More &rarr;' : '阅读更多 &rarr;' %></a>
+        </div>
+      </article>
+    <% }); %>
+  <% } else { %>
+    <div class="article-card">
+      <p><%= currentLang === 'en' ? 'No posts in this category.' : '暂无相关文章。' %></p>
+    </div>
+  <% } %>
+</div>

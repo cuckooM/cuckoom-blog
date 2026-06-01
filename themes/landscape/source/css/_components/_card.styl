@@ -1,0 +1,139 @@
+// ============================================
+// Article Card Component
+// ============================================
+
+.article-card
+  background: var(--color-card-bg)
+  border-radius: var(--radius-card)
+  padding: var(--space-lg)
+  margin-bottom: var(--space-xl)
+  box-shadow: var(--shadow-card)
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast)
+  max-width: var(--content-max-width)
+
+  &:hover
+    transform: translateY(-2px)
+    box-shadow: var(--shadow-card-hover)
+
+  .card-title
+    font-size: var(--font-size-lg)
+    font-weight: 600
+    color: var(--color-text-primary)
+    margin-bottom: var(--space-sm)
+    line-height: var(--line-height-heading)
+
+    a
+      color: inherit
+      text-decoration: none
+      &:hover
+        color: var(--color-primary)
+
+  .card-meta
+    font-size: var(--font-size-xs)
+    color: var(--color-text-secondary)
+    margin-bottom: var(--space-md)
+
+    .meta-item
+      display: inline-block
+      margin-right: var(--space-sm)
+
+      &::after
+        content: "\00B7"  // middle dot
+        margin-left: var(--space-sm)
+
+      &:last-child::after
+        content: ""
+
+  .card-excerpt
+    font-size: 15px
+    line-height: var(--line-height-base)
+    color: var(--color-text-secondary)
+    display: -webkit-box
+    -webkit-line-clamp: 3
+    -webkit-box-orient: vertical
+    overflow: hidden
+    margin-bottom: var(--space-md)
+
+  .card-tags
+    margin-bottom: var(--space-md)
+    display: flex
+    flex-wrap: wrap
+    gap: 6px
+
+    .tag-pill
+      display: inline-block
+      background: var(--color-tag-bg)
+      color: var(--color-tag-text)
+      font-size: var(--font-size-xs)
+      padding: var(--space-xs) 10px
+      border-radius: var(--radius-tag)
+      text-decoration: none
+
+      &:hover
+        opacity: 0.8
+
+  .card-read-more
+    text-align: right
+    margin-top: var(--space-md)
+    padding-top: var(--space-sm)
+
+    a
+      color: var(--color-primary)
+      font-size: var(--font-size-sm)
+      font-weight: 500
+      text-decoration: none
+
+      &:hover
+        text-decoration: underline
+
+// Card container for article list pages
+.article-card-list
+  max-width: var(--content-max-width)
+  margin: 0 auto
+  padding: 0 var(--space-md)
+
+  @media screen and (min-width: 1024px)
+    padding: 0
+
+// Pagination
+.pagination
+  display: flex
+  justify-content: center
+  align-items: center
+  gap: var(--space-sm)
+  margin: var(--space-2xl) 0
+  max-width: var(--content-max-width)
+  margin-left: auto
+  margin-right: auto
+
+  .page-number,
+  .prev,
+  .next
+    display: inline-flex
+    align-items: center
+    justify-content: center
+    padding: 8px 12px
+    border-radius: var(--radius-btn)
+    font-size: var(--font-size-sm)
+    text-decoration: none
+    color: var(--color-text-secondary)
+    transition: all var(--transition-fast)
+
+    &:hover
+      color: var(--color-primary)
+
+  .current
+    background: var(--color-primary)
+    color: #FFFFFF
+    &:hover
+      color: #FFFFFF
+
+  .space
+    padding: 8px 4px
+    color: var(--color-text-secondary)
+
+  @media screen and (max-width: 767px)
+    .page-number
+      display: none
+    .page-number.current
+      display: inline-flex
