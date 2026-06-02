@@ -8,7 +8,19 @@
 
       <main class="main-content">
         <div class="outer">
-          <section id="main"><%- body %></section>
+          <section id="main">
+            <% if (is_home()) { %>
+              <%- partial('index') %>
+            <% } else if (is_archive()) { %>
+              <%- partial('archive') %>
+            <% } else if (page.type === 'categories') { %>
+              <%- partial('categories') %>
+            <% } else if (page.type === 'tags') { %>
+              <%- partial('tags') %>
+            <% } else { %>
+              <%- partial('page') %>
+            <% } %>
+          </section>
         </div>
       </main>
 
