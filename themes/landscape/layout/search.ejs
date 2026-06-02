@@ -1,15 +1,120 @@
-<div id="container" class="outer">
-  <div id="main" class="inner">
-    <div class="page-title"><%= __('search') %></div>
+<%
+  var currentLang = 'zh-CN';
+  if (page && page.path && page.path.startsWith('en/')) {
+    currentLang = 'en';
+  }
 
-    <div class="search-form-wrap">
-      <form action="/" method="get" class="search-form">
-        <input type="search" id="search-input" class="search-form-input" placeholder="<%= __('search') %>" value="<%= page.query || '' %>">
-        <button type="submit" class="search-form-submit">&#xF002;</button>
-      </form>
-      <div id="search-result" class="search-result"></div>
-    </div>
+  var pageTitle = currentLang === 'en' ? 'Search' : '搜索';
+  var placeholder = currentLang === 'en' ? 'Search articles...' : '输入关键词搜索文章...';
+  var emptyMsg = currentLang === 'en' ? 'No results found. Try different keywords.' : '没有找到结果，试试其他关键词。';
+%>
+
+<!-- Simplified Hero -->
+<section class="hero-section hero-simple">
+  <div class="hero-content">
+    <h1 class="hero-title"><%= pageTitle %></h1>
+  </div>
+</section>
+
+<!-- Search Box -->
+<div class="search-page-container">
+  <div class="search-page-box">
+    <form class="search-page-form" onsubmit="return false;">
+      <span class="search-page-icon">&#xF002;</span>
+      <input type="search" id="search-page-input" class="search-page-input" placeholder="<%= placeholder %>">
+    </form>
   </div>
 
-  <%- partial('_partial/sidebar', {sidebar_page_path: 'index.html', sidebar_page_lang: 'zh-CN'}) %>
+  <!-- Search Results -->
+  <div id="search-page-results" class="search-page-results">
+    <div class="search-page-empty">
+      <p><%= emptyMsg %></p>
+    </div>
+  </div>
 </div>
+
+<script>
+  (function() {
+    var searchData = null;
+    var searchPath = "/search.xml";
+    var currentLang = '<%= currentLang %>';
+
+    function loadSearchData() {
+      if (searchData !== null) return;
+      $.get(searchPath, function(data) { searchData = data; }, 'xml');
+    }
+
+    function getSearchResults(query) {
+      if (!searchData) return [];
+      var results = [], keywords = query.trim().toLowerCase().split(/\s+/);
+      $(searchData).find('entry').each(function() {
+        var title = $(this).find('title').text(),
+            url = $(this).find('url').text(),
+            content = $(this).find('content').text(),
+            titleLower = title.toLowerCase(),
+            contentLower = content.toLowerCase(),
+            matchCount = 0;
+        for (var i = 0; i < keywords.length; i++) {
+          if (keywords[i]) {
+            if (titleLower.indexOf(keywords[i]) > -1) matchCount += 2;
+            if (contentLower.indexOf(keywords[i]) > -1) matchCount += 1;
+          }
+        }
+        if (matchCount > 0) {
+          var index = contentLower.indexOf(keywords[0] || ''),
+              snippetStart = index > 80 ? index - 80 : 0,
+              snippet = content.substring(snippetStart, snippetStart + 200);
+          if (content.length > 200) snippet += '...';
+          results.push({ title: title, url: url, snippet: snippet, score: matchCount });
+        }
+      });
+      results.sort(function(a, b) { return b.score - a.score; });
+      return results.slice(0, 20);
+    }
+
+    function renderResults(results) {
+      var html = '';
+      if (results.length === 0) {
+        html = '<div class="search-page-empty"><p>' +
+          (currentLang === 'en' ? 'No results found.' : '没有找到结果') + '</p></div>';
+      } else {
+        results.forEach(function(item) {
+          html += '<a href="' + item.url + '" class="search-page-result-item">' +
+            '<h3 class="search-page-result-title">' + item.title + '</h3>' +
+            '<p class="search-page-result-snippet">' + item.snippet + '</p>' +
+            '</a>';
+        });
+      }
+      return html;
+    }
+
+    loadSearchData();
+
+    var debounceTimer;
+    $('#search-page-input').on('input', function() {
+      clearTimeout(debounceTimer);
+      var query = $(this).val().trim();
+      if (!query) {
+        $('#search-page-results').html(
+          '<div class="search-page-empty"><p>' +
+          (currentLang === 'en' ? 'Enter keywords to search...' : '输入关键词搜索...') + '</p></div>'
+        );
+        return;
+      }
+      debounceTimer = setTimeout(function() {
+        if (searchData) {
+          $('#search-page-results').html(renderResults(getSearchResults(query)));
+        } else {
+          loadSearchData();
+          var timer = setInterval(function() {
+            if (searchData) {
+              clearInterval(timer);
+              $('#search-page-results').html(renderResults(getSearchResults(query)));
+            }
+          }, 100);
+          setTimeout(function() { clearInterval(timer); }, 2000);
+        }
+      }, 300);
+    });
+  })();
+</script>

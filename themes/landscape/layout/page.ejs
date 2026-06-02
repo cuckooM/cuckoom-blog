@@ -1,11 +1,18 @@
-<% if (page.type === 'tags') { %>
-  <%- partial('tags') %>
-<% } else if (page.type === 'categories') { %>
-  <%- partial('categories') %>
-<% } else if (page.layout === 'archive') { %>
-  <%- partial('archive') %>
-<% } else if (page.type === 'archives') { %>
-  <%- partial('archive') %>
-<% } else { %>
-  <%- partial('_partial/article', {post: page, index: false}) %>
-<% } %>
+<%
+  var currentLang = 'zh-CN';
+  if (page && page.path && page.path.startsWith('en/')) {
+    currentLang = 'en';
+  }
+%>
+
+<!-- Simplified Hero -->
+<section class="hero-section hero-simple">
+  <div class="hero-content">
+    <h1 class="hero-title"><%= page.title %></h1>
+  </div>
+</section>
+
+<!-- Page Content -->
+<div class="page-content">
+  <%- page.content %>
+</div>

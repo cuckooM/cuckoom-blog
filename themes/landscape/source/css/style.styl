@@ -1,4 +1,12 @@
 @import "nib"
+
+// === Design System (new) ===
+@import "_design-system"
+@import "_components/_card"
+@import "_components/_hero"
+@import "_components/_sidebar-drawer"
+
+// === Original variables (keep for backward compatibility) ===
 @import "_variables"
 @import "_util/mixin"
 @import "_util/grid"
@@ -12,22 +20,28 @@ input, button
     border: 0
     padding: 0
 
+// === Global body & layout ===
 html, body, #container
   height: 100%
 
 body
-  background: color-background
-  font: font-size font-sans
+  background: var(--color-bg)
+  font: var(--font-size-base) var(--font-sans)
+  color: var(--color-text-primary)
+  line-height: var(--line-height-base)
   -webkit-text-size-adjust: 100%
 
 .outer
   clearfix()
-  max-width: (column-width + gutter-width) * columns + gutter-width
   margin: 0 auto
-  padding: 0 gutter-width
+  padding: 0 var(--space-md)
+
+  @media screen and (min-width: 1024px)
+    max-width: var(--header-max-width)
+    padding: 0
 
 .inner
-  column(columns)
+  width: 100%
 
 .left, .alignleft
   float: left
@@ -52,14 +66,14 @@ body
   left: 0
   transition: 0.2s ease-out
   z-index: 1
-  background: color-background
+  background: var(--color-bg)
   .mobile-nav-on &
     left: mobile-nav-width
 
-if sidebar and sidebar isnt bottom
-  #main
-    @media mq-normal
-      column(main-column)
+// Main content area - centered, no sidebar
+#main
+  max-width: var(--content-max-width)
+  margin: 0 auto
 
 @import "_extend"
 @import "_partial/header"

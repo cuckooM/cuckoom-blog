@@ -1,1 +1,68 @@
-<%- partial('_partial/article', {post: page, index: false}) %>
+<%
+  var currentLang = 'zh-CN';
+  if (page && page.path && page.path.startsWith('en/')) {
+    currentLang = 'en';
+  }
+%>
+
+<!-- Simplified Hero for Post Page -->
+<section class="hero-section hero-simple">
+  <div class="hero-content">
+    <h1 class="hero-title"><%= page.title || '(no title)' %></h1>
+  </div>
+</section>
+
+<!-- Article Content -->
+<article class="article-detail">
+  <!-- Meta Info -->
+  <div class="article-meta-bar">
+    <span class="meta-date"><%- date(page.date, 'YYYY-MM-DD') %></span>
+    <% if (page.categories && page.categories.length) { %>
+      <span class="meta-sep">&middot;</span>
+      <a href="<%- url_for(page.categories.data[0].path) %>" class="meta-category"><%= page.categories.data[0].name %></a>
+    <% } %>
+    <% if (page.tags && page.tags.length) { %>
+      <span class="meta-sep">&middot;</span>
+      <span class="meta-tags">
+        <% page.tags.forEach(function(tag) { %>
+        <a href="<%- url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
+        <% }) %>
+      </span>
+    <% } %>
+  </div>
+
+  <!-- Article Body -->
+  <div class="article-body e-content" itemprop="articleBody">
+    <%- page.content %>
+  </div>
+</article>
+
+<!-- Post Navigation -->
+<% if (page.prev || page.next) { %>
+<nav class="post-navigation">
+  <% if (page.prev) { %>
+  <a href="<%- url_for(page.prev.path) %>" class="post-nav-item post-nav-prev">
+    <span class="post-nav-label">&larr; <%= currentLang === 'en' ? 'Previous' : '上一篇' %></span>
+    <span class="post-nav-title"><%= page.prev.title %></span>
+  </a>
+  <% } %>
+  <% if (page.next) { %>
+  <a href="<%- url_for(page.next.path) %>" class="post-nav-item post-nav-next">
+    <span class="post-nav-label"><%= currentLang === 'en' ? 'Next' : '下一篇' %> &rarr;</span>
+    <span class="post-nav-title"><%= page.next.title %></span>
+  </a>
+  <% } %>
+</nav>
+<% } %>
+
+<!-- Comments -->
+<% if (page.comments && theme.disqus_shortname) { %>
+<section id="comments">
+  <div id="disqus_thread">
+    <noscript>Please enable JavaScript to view the <a href="//disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+  </div>
+</section>
+<% } %>
+<% if (page.comments && theme.valine && theme.valine.enable && theme.valine.appId && theme.valine.appKey) { %>
+<section id="comments" class="vcomment"></section>
+<% } %>

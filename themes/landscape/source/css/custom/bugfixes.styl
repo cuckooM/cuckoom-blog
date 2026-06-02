@@ -1,0 +1,29 @@
+// ============================================
+// Bug Fixes
+// ============================================
+
+// --- Fix 1: Header 首页导航菜单白色文字不可见 ---
+// Problem: 明亮主题下 .site-header 未滚动时 background: transparent，
+// .main-nav-link 设为白色 (#fff)，但透出来的是 body 背景色 (#FAFAFA)，
+// 白色文字在浅色背景上不可见。
+//
+// Root cause: header 使用 position: sticky 但未叠加在 hero 渐变上方，
+// 在文档流中 header 自身占空间，hero 在 header 下方开始渲染。
+// header 的 transparent 背景透出来的是 body 背景而非 hero 渐变。
+//
+// Fix: 给未滚动且有 hero 的页面 header 添加与 hero 相同的渐变背景。
+// 这样 header 自然占文档流空间（不改变布局），同时白色文字在渐变上可见。
+
+.site-header:not(.scrolled):not(.no-hero)
+  background: linear-gradient(135deg, var(--gradient-hero-start), var(--gradient-hero-end))
+
+// --- Fix 2: Sidebar drawer 收起时仍有部分露出 ---
+// Problem: right: calc(-1 * var(--sidebar-width) - var(--radius-card) - 10px)
+// 对 300px 侧栏 = -322px，额外 10px 余量不够，border-radius 曲线和
+// box-shadow 导致边缘露出。
+//
+// Fix: 增大偏移量到 -500px，确保侧栏完全移出视口。
+
+@media screen and (min-width: 768px)
+  .sidebar-drawer
+    right: -500px

@@ -1,80 +1,91 @@
-.archives-wrap
-  margin: block-margin 0
+// ============================================
+// Archive Page - Timeline Styles
+// ============================================
 
-.archives
-  clearfix()
+.archive-timeline
+  max-width: var(--content-max-width)
+  margin: 0 auto
+  padding: var(--space-2xl) var(--space-md)
 
-.archive-year-wrap
-  margin-bottom: 1em
+  @media screen and (min-width: 1024px)
+    padding: var(--space-2xl) 0
 
 .archive-year
-  @extend $block-caption
+  margin-bottom: var(--space-2xl)
 
-.archives
-  column-gap: 10px
-  @media mq-tablet
-    column-count: 2
-  @media mq-normal
-    column-count: 3
+  &:last-child
+    margin-bottom: 0
 
-.archive-article
-  avoid-column-break()
+.archive-year-title
+  font-size: var(--font-size-lg)
+  font-weight: 600
+  color: var(--color-text-primary)
+  margin-bottom: var(--space-lg)
+  padding-left: 20px
+  position: relative
 
-.archive-article-inner
-  @extend $block
-  padding: 10px
-  margin-bottom: 15px
+  &::before
+    content: ""
+    position: absolute
+    left: 0
+    top: 4px
+    width: 8px
+    height: 8px
+    border-radius: 50%
+    background: var(--color-primary)
 
-.archive-article-title
-  text-decoration: none
-  font-weight: bold
-  color: color-default
-  transition: color 0.2s
-  line-height: line-height
-  &:hover
-    color: color-link
+.archive-month
+  margin-bottom: var(--space-xl)
+  padding-left: 24px
+  border-left: 2px solid var(--color-border)
 
-.archive-article-footer
-  margin-top: 1em
+.archive-month-title
+  font-size: var(--font-size-base)
+  font-weight: 500
+  color: var(--color-text-secondary)
+  margin-bottom: var(--space-md)
 
-.archive-article-date
-  color: color-grey
-  text-decoration: none
-  font-size: 0.85em
-  line-height: 1em
-  margin-bottom: 0.5em
-  display: block
+.archive-month-posts
+  .archive-post-item
+    display: flex
+    align-items: baseline
+    gap: var(--space-sm)
+    padding: var(--space-sm) 0
+    margin-bottom: var(--space-xs)
+    border-left: 2px solid transparent
+    padding-left: var(--space-md)
+    margin-left: -2px
 
-#page-nav
-  clearfix()
-  margin: block-margin auto
-  background: #fff
-  box-shadow: 1px 2px 3px #ddd
-  border: 1px solid color-border
-  border-radius: 3px
-  text-align: center
-  color: color-grey
-  overflow: hidden
-  a, span
-    padding: 10px 20px
-    line-height: 1
-    height: 2ex
-  a
-    color: color-grey
-    text-decoration: none
     &:hover
-      background: color-grey
-      color: #fff
-  .prev
-    float: left
-  .next
-    float: right
-  .page-number
-    display: inline-block
-    @media mq-mobile
-      display: none
-  .current
-    color: color-default
-    font-weight: bold
-  .space
-    color: color-border
+      border-left-color: var(--color-primary)
+
+    .archive-post-date
+      font-size: var(--font-size-sm)
+      color: var(--color-text-secondary)
+      font-family: var(--font-mono)
+      min-width: 24px
+      flex-shrink: 0
+
+    .archive-post-title
+      font-size: var(--font-size-sm)
+      color: var(--color-text-primary)
+      text-decoration: none
+      flex: 1
+
+      &:hover
+        color: var(--color-primary)
+
+    .archive-post-tags
+      display: flex
+      gap: 4px
+      flex-shrink: 0
+
+      .tag-pill
+        font-size: 12px
+        padding: 2px 6px
+
+.archive-empty
+  text-align: center
+  padding: var(--space-2xl) 0
+  color: var(--color-text-secondary)
+  font-size: var(--font-size-base)

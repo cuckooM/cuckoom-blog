@@ -1,65 +1,87 @@
-<header id="header">
-  <div id="banner"></div>
-  <div id="header-outer" class="outer">
-    <div id="header-title" class="inner">
-      <h1 id="logo-wrap">
-        <a href="<%- url_for() %>" id="logo"><%= config.title %></a>
-      </h1>
-      <% if (theme.subtitle || config.subtitle){ %>
-        <h2 id="subtitle-wrap">
-          <a href="<%- url_for() %>" id="subtitle"><%= theme.subtitle || config.subtitle %></a>
-        </h2>
-      <% } %>
-    </div>
-    <div id="header-inner" class="inner">
-      <nav id="main-nav">
-        <a id="main-nav-toggle" class="nav-icon"><span class="fa fa-bars"></span></a>
-        <% if (config.theme_config && config.theme_config.menu) { %>
-          <%
-            // Simplified language detection for non-i18n mode
-            // All posts are in Chinese, menu changes based on UI language preference
-            var currentLang = 'zh-CN';
-            if (page && page.path) {
-              if (page.path.startsWith('en/')) {
-                currentLang = 'en';
-              }
-            }
+<header id="header" class="site-header">
+  <div class="header-inner outer">
+    <!-- Logo / Site Title -->
+    <a href="<%- url_for() %>" class="header-logo">
+      <span class="logo-text"><%= config.title %></span>
+    </a>
 
-            var menuData = config.theme_config.menu[currentLang] || config.theme_config.menu['zh-CN'] || config.theme_config.menu;
-            for (var i in menuData){
-              if (typeof menuData[i] === 'string') {
-                var title = i;
-                var url = menuData[i];
-          %>
-              <a class="main-nav-link" href="<%- url_for(url) %>"><%= title %></a>
-          <%
-              }
+    <!-- Navigation Links -->
+    <nav id="main-nav" class="main-nav">
+      <a id="main-nav-toggle" class="nav-icon mobile-menu-toggle" title="菜单"><span class="fa fa-bars"></span></a>
+      <% if (config.theme_config && config.theme_config.menu) { %>
+        <%
+          var currentLang = 'zh-CN';
+          if (page && page.path) {
+            if (page.path.startsWith('en/')) {
+              currentLang = 'en';
             }
-          %>
+          }
+          var menuData = config.theme_config.menu[currentLang] || config.theme_config.menu['zh-CN'] || config.theme_config.menu;
+          for (var i in menuData){
+            if (typeof menuData[i] === 'string') {
+              var title = i;
+              var url = menuData[i];
+              // Determine if this is the current page
+              var isCurrent = false;
+              if (url === '' && is_home()) {
+                isCurrent = true;
+              } else if (url === 'archives' && is_archive()) {
+                isCurrent = true;
+              } else if (url === 'categories' && (is_category() || page.type === 'categories')) {
+                isCurrent = true;
+              } else if (url === 'tags' && (is_tag() || page.type === 'tags')) {
+                isCurrent = true;
+              } else if (url === 'about' && page.path && page.path.indexOf('about') > -1) {
+                isCurrent = true;
+              }
+        %>
+          <a class="main-nav-link<% if (isCurrent) { %> active<% } %>" href="<%- url_for(url) %>"><%= title %></a>
+        <%
+            }
+          }
+        %>
+      <% } %>
+    </nav>
+
+    <!-- Action Buttons (right side) -->
+    <nav id="sub-nav" class="sub-nav">
+      <!-- Sidebar Toggle -->
+      <button class="sidebar-toggle-btn" id="sidebar-toggle" title="侧边栏" aria-label="展开侧边栏">
+        <span class="fa fa-bars"></span>
+      </button>
+
+      <!-- Theme Toggle -->
+      <button class="theme-toggle-btn" aria-label="切换主题">
+        <span class="theme-icon" aria-hidden="true">🌙</span>
+      </button>
+
+      <!-- Language Switcher -->
+      <%- partial('_partial/language-switcher', {page: page, currentLang: currentLang}, {cache: false}) %>
+
+      <!-- GitHub Link -->
+      <% if (theme.links) { %>
+        <% for (const i in theme.links) {%>
+          <a class="nav-icon nav-link" target="_blank" rel="noopener" href="<%- url_for(theme.links[i]) %>" title="GitHub"><span class="fa fa-<%= i %>"></span></a>
         <% } %>
-      </nav>
-      <nav id="sub-nav">
-        <%- partial('_partial/language-switcher', {page: page, currentLang: currentLang}, {cache: false}) %>
-        <% if (theme.links) { %>
-          <% for (const i in theme.links) {%>
-            <a class="nav-icon" target="_blank" rel="noopener" href="<%- url_for(theme.links[i]) %>"><span class="fa fa-<%= i %>"></span></a>
-          <% } %>
-        <% } %>
-        <a class="nav-icon nav-search-btn" title="<%= __('search') %>"><span class="fa fa-search"></span></a>
-      </nav>
-      <div id="search-form-wrap">
-        <form action="/" method="get" class="search-form">
-          <input type="search" id="search-input" class="search-form-input" placeholder="搜索">
-          <button type="submit" class="search-form-submit">&#xF002;</button>
-        </form>
-        <div id="search-result" class="search-result"></div>
-      </div>
+      <% } %>
+
+      <!-- Search -->
+      <a class="nav-icon nav-search-btn" id="search-toggle" title="<%= __('search') %>"><span class="fa fa-search"></span></a>
+    </nav>
+
+    <!-- Search Form (expandable) -->
+    <div id="search-form-wrap" class="search-form-wrap">
+      <form action="/" method="get" class="search-form">
+        <input type="search" id="search-input" class="search-form-input" placeholder="搜索">
+        <button type="submit" class="search-form-submit">&#xF002;</button>
+      </form>
+      <div id="search-result" class="search-result"></div>
     </div>
   </div>
 </header>
 
 <script>
-  // Local search
+  // Local search (keep existing functionality)
   var searchData = null;
   var searchPath = "/search.xml";
 
@@ -121,29 +143,101 @@
     setTimeout(function() { clearInterval(timer); }, 2000);
   }
 
-  // Check for URL query parameter on page load
+  // Sidebar drawer toggle
+  function toggleSidebarDrawer() {
+    var drawer = document.querySelector('.sidebar-drawer');
+    var overlay = document.querySelector('.drawer-overlay');
+    if (drawer && overlay) {
+      var isOpen = drawer.classList.contains('is-open');
+      if (isOpen) {
+        drawer.classList.remove('is-open');
+        overlay.classList.remove('is-visible');
+      } else {
+        drawer.classList.add('is-open');
+        overlay.classList.add('is-visible');
+      }
+    }
+  }
+
+  function closeSidebarDrawer() {
+    var drawer = document.querySelector('.sidebar-drawer');
+    var overlay = document.querySelector('.drawer-overlay');
+    if (drawer) drawer.classList.remove('is-open');
+    if (overlay) overlay.classList.remove('is-visible');
+  }
+
   $(document).ready(function() {
-    // Initial load
+    // Search functionality
     loadSearchData();
 
-    // Bind search form submit
+    // Search form submit
     $('body').on('submit', '.search-form', function(e) {
       e.preventDefault();
       var query = $('#search-input').val();
       if (query) {
-        // Update URL
         var newUrl = window.location.pathname + (window.location.pathname.endsWith('/') ? '' : '/') + '?q=' + encodeURIComponent(query);
         window.history.pushState(null, null, newUrl);
         handleSearch(query);
       }
     });
 
-    // Check for URL query parameter on page load
+    // URL query parameter on page load
     var urlParams = new URLSearchParams(window.location.search);
     var query = urlParams.get('q');
     if (query) {
       $('#search-input').val(decodeURIComponent(query));
       handleSearch(query);
+    }
+
+    // Search toggle button
+    $('#search-toggle').on('click', function(e) {
+      e.preventDefault();
+      var wrap = $('#search-form-wrap');
+      var input = $('#search-input');
+      if (wrap.hasClass('on')) {
+        wrap.removeClass('on');
+        input.blur();
+      } else {
+        wrap.addClass('on');
+        input.focus();
+      }
+    });
+
+    // Sidebar drawer toggle
+    $('#sidebar-toggle').on('click', function(e) {
+      e.preventDefault();
+      toggleSidebarDrawer();
+    });
+
+    // Close drawer on overlay click
+    $('.drawer-overlay').on('click', function() {
+      closeSidebarDrawer();
+    });
+
+    // Close drawer on Esc key
+    $(document).on('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeSidebarDrawer();
+        $('#search-form-wrap').removeClass('on');
+      }
+    });
+
+    // Close drawer when a link inside is clicked
+    $('.sidebar-drawer a').on('click', function() {
+      closeSidebarDrawer();
+    });
+
+    // Header scroll behavior - add scrolled class
+    var header = document.getElementById('header');
+    if (header) {
+      var scrollThreshold = 60;
+      window.addEventListener('scroll', function() {
+        if (window.scrollY > scrollThreshold) {
+          header.classList.add('scrolled');
+        } else {
+          header.classList.remove('scrolled');
+        }
+      }, { passive: true });
     }
   });
 </script>

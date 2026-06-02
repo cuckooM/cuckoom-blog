@@ -1,0 +1,123 @@
+<aside class="sidebar-drawer" id="sidebar-drawer">
+  <!-- Close Button -->
+  <button class="drawer-close" id="drawer-close" aria-label="关闭侧边栏">&times;</button>
+
+  <!-- Categories Widget -->
+  <% if (site.categories && site.categories.length) { %>
+  <div class="drawer-widget">
+    <h3 class="widget-title"><%= __('categories') %></h3>
+    <ul class="widget-list">
+      <%
+        var currentLang = 'zh-CN';
+        if (page && page.path && page.path.startsWith('en/')) {
+          currentLang = 'en';
+        }
+        var categories = site.categories.toArray().filter(function(cat) {
+          if (currentLang === 'en') {
+            return !/[\u4e00-\u9fa5]/.test(cat.name);
+          }
+          return true; // Show all categories on Chinese pages
+        });
+        categories.forEach(function(cat) {
+      %>
+      <li>
+        <a href="<%- url_for(cat.path) %>"><%= cat.name %></a>
+        <% if (theme.show_count) { %>
+          <span class="widget-count"><%= cat.length %></span>
+        <% } %>
+      </li>
+      <% }); %>
+    </ul>
+  </div>
+  <% } %>
+
+  <!-- Tag Cloud Widget -->
+  <% if (site.tags && site.tags.length) { %>
+  <div class="drawer-widget">
+    <h3 class="widget-title"><%= __('tagcloud') %></h3>
+    <ul class="widget-list tag-cloud">
+      <%
+        var tags = site.tags.toArray().filter(function(tag) {
+          if (currentLang === 'en') {
+            return !/[\u4e00-\u9fa5]/.test(tag.name);
+          }
+          return true;
+        });
+        var counts = tags.map(function(t) { return t.length; });
+        var minCount = tags.length > 0 ? Math.min.apply(Math, counts) : 0;
+        var maxCount = tags.length > 0 ? Math.max.apply(Math, counts) : 0;
+        var minFont = 12;
+        var maxFont = 20;
+        tags.forEach(function(tag) {
+          var ratio = (maxCount === minCount) ? 0.5 : (tag.length - minCount) / (maxCount - minCount);
+          var fontSize = minFont + (maxFont - minFont) * ratio;
+      %>
+      <li>
+        <a href="<%= url_for(tag.path) %>" style="font-size: <%= fontSize %>px;"><%= tag.name %></a>
+      </li>
+      <% }); %>
+    </ul>
+  </div>
+  <% } %>
+
+  <!-- Archive Widget -->
+  <% if (site.posts && site.posts.length) { %>
+  <div class="drawer-widget">
+    <h3 class="widget-title"><%= __('archive_a') %></h3>
+    <ul class="widget-list">
+      <%
+        var archives = {};
+        site.posts.forEach(function(post) {
+          var year = post.date.year();
+          var month = post.date.format('MM');
+          if (!archives[year]) archives[year] = {};
+          if (!archives[year][month]) archives[year][month] = 0;
+          archives[year][month]++;
+        });
+
+        var langPrefix = currentLang === 'en' ? 'en/' : '';
+        var monthNames = currentLang === 'en'
+          ? ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+          : ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+
+        var years = Object.keys(archives).sort(function(a, b) { return b - a; });
+        years.forEach(function(year) {
+          var months = archives[year];
+          var sortedMonths = Object.keys(months).sort(function(a, b) { return b - a; });
+          sortedMonths.forEach(function(month) {
+      %>
+      <li>
+        <a href="<%- url_for(langPrefix + 'archives/' + year + '/' + month + '/') %>">
+          <%= monthNames[parseInt(month) - 1] %> <%= year %>
+          <span class="widget-count"><%= months[month] %></span>
+        </a>
+      </li>
+      <% }); }); %>
+    </ul>
+  </div>
+  <% } %>
+
+  <!-- Recent Posts Widget -->
+  <div class="drawer-widget">
+    <h3 class="widget-title"><%= __('recent_posts') %></h3>
+    <ul class="widget-list">
+      <%
+        var allPosts = site.posts.toArray();
+        var recentPosts = allPosts
+          .filter(function(post) {
+            if (currentLang === 'en') {
+              return post.lang === 'en';
+            }
+            return post.lang !== 'en';
+          })
+          .sort(function(a, b) { return b.date - a.date; })
+          .slice(0, 5);
+        recentPosts.forEach(function(post) {
+      %>
+      <li>
+        <a href="<%- url_for(post.path) %>"><%= post.title || '(no title)' %></a>
+      </li>
+      <% }); %>
+    </ul>
+  </div>
+</aside>
