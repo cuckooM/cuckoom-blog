@@ -1,42 +1,34 @@
 <!DOCTYPE html>
-<html>
+<html lang="<%= page.lang || config.language || 'zh-CN' %>">
 <%- partial('_partial/head') %>
 <body>
   <div id="container">
     <div id="wrap">
       <%- partial('_partial/header', {page: page}, {cache: false}) %>
-      <% if (theme.sidebar && theme.sidebar !== 'bottom'){ %>
-        <%
-          // Determine sidebar page path and language
-          // Sidebar should point to the language index (not the current article page)
-          var currentUrl = '';
 
-          // Try to get path from page object first (since we're on a page with sidebar)
-          if (page && page.path) {
-            currentUrl = page.path;
-          }
+      <main class="main-content">
+        <div class="outer">
+          <section id="main"><%- body %></section>
+        </div>
+      </main>
 
-          var pagePathForSidebar = '';
-          var pageLangForSidebar = '';
-
-          // Check if current URL/path starts with 'en/'
-          if (currentUrl && currentUrl.startsWith('en/')) {
-            pagePathForSidebar = 'en/index.html';
-            pageLangForSidebar = 'en';
-          } else {
-            pagePathForSidebar = 'index.html';
-            pageLangForSidebar = 'zh-CN';
-          }
-        %>
-        <%- partial('_partial/sidebar', {sidebar_page_path: String(pagePathForSidebar), sidebar_page_lang: String(pageLangForSidebar)}, {cache: false}) %>
-      <% } %>
-      <div class="outer">
-        <section id="main"><%- body %></section>
-      </div>
       <%- partial('_partial/footer', null, {cache: !config.relative_link}) %>
     </div>
+
+    <!-- Mobile Navigation -->
     <%- partial('_partial/mobile-nav', null, {cache: !config.relative_link}) %>
+
+    <!-- Sidebar Drawer Overlay -->
+    <div class="drawer-overlay"></div>
+
+    <!-- Sidebar Drawer -->
+    <%- partial('_partial/sidebar-drawer', null, {cache: false}) %>
+
+    <!-- After-footer scripts -->
     <%- partial('_partial/after-footer') %>
   </div>
+
+  <!-- Theme Toggle Script -->
+  <script src="<%- url_for('/js/theme-toggle.js') %>"></script>
 </body>
 </html>

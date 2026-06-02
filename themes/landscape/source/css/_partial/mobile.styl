@@ -1,3 +1,7 @@
+// ============================================
+// Mobile Navigation Styles
+// ============================================
+
 @media mq-mobile
   #mobile-nav
     position: absolute
@@ -5,15 +9,15 @@
     left: 0
     width: mobile-nav-width
     height: 100%
-    background: color-mobile-nav-background
-    border-right: 1px solid #fff
+    background: var(--color-card-bg)
+    border-right: 1px solid var(--color-border)
 
-@media mq-mobile
   .mobile-nav-link
     display: block
-    color: color-grey
+    color: var(--color-text-primary)
     text-decoration: none
     padding: 15px 20px
-    font-weight: bold
+    font-weight: 500
+
     &:hover
-      color: #fff
+      color: var(--color-primary)

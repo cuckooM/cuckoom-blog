@@ -1,28 +1,48 @@
-<h1 class="page-title"><%= page.title %></h1>
+<%
+  var currentLang = 'zh-CN';
+  if (page && page.path && page.path.startsWith('en/')) {
+    currentLang = 'en';
+  }
 
-<div class="categories-list">
-  <h2 class="widget-title">分类列表</h2>
-  <div class="widget">
-    <ul class="category-list">
-      <% if (page.category_names && Array.isArray(page.category_names)) { %>
-        <% page.category_names.forEach(function(catName){ %>
-        <li class="category-list-item">
-          <% var catPath = page.section === 'en' ? 'en/categories/' + catName + '/' : 'categories/' + catName + '/'; %>
-          <a class="category-list-link" href="<%- url_for(catPath) %>">
-            <%= catName %>
-          </a>
-        </li>
-        <% }); %>
-      <% } else { %>
-        <% site.categories.each(function(cat){ %>
-      <li class="category-list-item">
-        <a class="category-list-link" href="<%- url_for(cat.path) %>">
-          <%= cat.name %>
-          <span class="category-count"><%= cat.posts.length %></span>
-        </a>
-      </li>
-        <% }); %>
-      <% } %>
-    </ul>
+  var pageTitle = currentLang === 'en' ? 'Categories' : '分类';
+  var pageDesc = currentLang === 'en' ? 'Browse posts by category' : '按分类浏览文章';
+%>
+
+<!-- Simplified Hero -->
+<section class="hero-section hero-simple">
+  <div class="hero-content">
+    <h1 class="hero-title"><%= pageTitle %></h1>
+    <p class="hero-description"><%= pageDesc %></p>
   </div>
+</section>
+
+<!-- Category Cards Grid -->
+<div class="category-grid">
+  <% if (site.categories && site.categories.length) { %>
+    <%
+      var categories = site.categories.toArray().filter(function(cat) {
+        if (currentLang === 'en') {
+          return !/[\u4e00-\u9fa5]/.test(cat.name);
+        }
+        return true;
+      });
+      categories.forEach(function(cat) {
+    %>
+    <a href="<%- url_for(cat.path) %>" class="category-card">
+      <div class="category-card-icon">📚</div>
+      <h3 class="category-card-name"><%= cat.name %></h3>
+      <p class="category-card-count">
+        <%= cat.length %> <%= currentLang === 'en' ? 'posts' : '篇文章' %>
+      </p>
+    </a>
+    <% }); %>
+  <% } else { %>
+    <div class="category-empty">
+      <% if (currentLang === 'en') { %>
+      <p>No categories yet.</p>
+      <% } else { %>
+      <p>暂无分类。</p>
+      <% } %>
+    </div>
+  <% } %>
 </div>

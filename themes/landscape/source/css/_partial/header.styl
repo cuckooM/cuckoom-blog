@@ -1,167 +1,338 @@
-#header
-  height: banner-height
-  position: relative
-  border-bottom: 1px solid color-border
-  &:before, &:after
-    content: ""
-    position: absolute
-    left: 0
-    right: 0
-    height: 40px
-  &:before
-    top: 0
-    background: linear-gradient(rgba(0, 0, 0, 0.2), transparent)
-  &:after
-    bottom: 0
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.2))
+// ============================================
+// Header / Navbar Styles - Redesigned
+// ============================================
 
-#header-outer
-  height: 100%
-  position: relative
-
-#header-inner
-  position: relative
-  overflow: visible
-
-#banner
-  position: absolute
+.site-header
+  position: sticky
   top: 0
-  left: 0
-  width: 100%
-  height: 100%
-  background: url(banner-url) center #000
-  background-size: cover
-  z-index: -1
+  z-index: 200
+  background: transparent
+  transition: background var(--transition-fast), box-shadow var(--transition-fast)
 
-#header-title
-  text-align: center
-  height: logo-size
-  position: absolute
-  top: 50%
-  left: 0
-  margin-top: logo-size * -0.5
+  // Scrolled state - solid background + shadow
+  &.scrolled
+    background: var(--color-card-bg)
+    box-shadow: var(--shadow-header)
 
-$logo-text
-  text-decoration: none
-  color: #fff
-  font-weight: 300
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3)
-
-#logo
-  @extend $logo-text
-  font-size: logo-size
-  line-height: logo-size
-  letter-spacing: 2px
-
-#subtitle
-  @extend $logo-text
-  font-size: subtitle-size
-  line-height: subtitle-size
-  letter-spacing: 1px
-
-#subtitle-wrap
-  margin-top: subtitle-size
-
-#main-nav
-  float: left
-  margin-left: -15px
-
-$nav-link
-  float: left
-  color: #fff
-  opacity: 0.6
-  text-decoration: none
-  text-shadow: 0 1px rgba(0, 0, 0, 0.2)
-  transition: opacity 0.2s
-  display: block
-  padding: 20px 15px
-  &:hover
-    opacity: 1
-
-.nav-icon
-  float: left
-  color: #fff
-  opacity: 0.6
-  text-decoration: none
-  text-shadow: 0 1px rgba(0, 0, 0, 0.2)
-  transition: opacity 0.2s
-  display: block
-  padding: 20px 15px
-  text-align: center
-  font-size: font-size
-  width: font-size
-  height: font-size
-  position: relative
-  cursor: pointer
-  & > span
-    color: #fff
-  &:hover
-    opacity: 1
-
-.main-nav-link
-  @extend $nav-link
-  font-weight: 300
-  letter-spacing: 1px
-  @media mq-mobile
-    display: none
-
-#main-nav-toggle
-  display: none
-  @media mq-mobile
-    display: block
-
-#sub-nav
-  float: right
-  margin-right: -15px
-  height: 100%
+.header-inner
   display: flex
   align-items: center
+  justify-content: space-between
+  height: var(--header-height)
+  padding: 0 var(--space-md)
 
-#search-form-wrap
+  @media screen and (min-width: 1024px)
+    padding: 0
+
+// Logo
+.header-logo
+  text-decoration: none
+  flex-shrink: 0
+
+  .logo-text
+    font-size: 20px
+    font-weight: 700
+    color: var(--color-text-primary)  // default visible color
+    text-decoration: none
+    transition: color var(--transition-fast)
+
+    // White only on pages with hero gradient (homepage, archive, etc.)
+    .site-header:not(.scrolled):not(.no-hero) &
+      color: #FFFFFF
+
+    // Dark text when header has solid background (scrolled)
+    .site-header.scrolled &
+      color: var(--color-text-primary)
+
+// Main Navigation
+.main-nav
+  display: flex
+  align-items: center
+  gap: var(--space-lg)
+
+.main-nav-link
+  font-size: 15px
+  font-weight: 500
+  color: var(--color-text-primary)  // default visible color
+  text-decoration: none
+  padding: var(--space-xs) 0
+  position: relative
+  transition: color var(--transition-fast)
+
+  &::after
+    content: ""
+    position: absolute
+    bottom: 0
+    left: 0
+    width: 0
+    height: 2px
+    background: var(--color-primary)
+    transition: width var(--transition-fast)
+
+  &:hover
+    color: var(--color-primary)
+    &::after
+      width: 100%
+
+  &.active
+    color: var(--color-primary)
+    &::after
+      width: 100%
+
+  // White only on pages with hero gradient
+  .site-header:not(.scrolled):not(.no-hero) &
+    color: #FFFFFF
+
+    &:hover, &.active
+      color: rgba(255, 255, 255, 0.85)
+
+  // Dark text when header has solid background (scrolled or no hero)
+  .site-header.scrolled &
+    color: var(--color-text-primary)
+
+    &:hover, &.active
+      color: var(--color-primary)
+
+  // Hide on mobile
+  @media screen and (max-width: 767px)
+    display: none
+
+// Sub Navigation (right side actions)
+.sub-nav
+  display: flex
+  align-items: center
+  gap: var(--space-sm)
+
+// Navigation icons (search, github, etc.)
+.nav-icon
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  width: 36px
+  height: 36px
+  color: var(--color-text-primary)  // default visible color
+  text-decoration: none
+  font-size: 18px
+  border-radius: var(--radius-btn)
+  transition: color var(--transition-fast), background var(--transition-fast)
+
+  &:hover
+    color: var(--color-primary)
+    background: rgba(0, 0, 0, 0.05)
+
+  // White only on pages with hero gradient
+  .site-header:not(.scrolled):not(.no-hero) &
+    color: #FFFFFF
+
+    &:hover
+      color: rgba(255, 255, 255, 0.85)
+      background: rgba(255, 255, 255, 0.1)
+
+  // Dark text when header has solid background (scrolled)
+  .site-header.scrolled &
+    color: var(--color-text-primary)
+
+    &:hover
+      color: var(--color-primary)
+      background: rgba(0, 0, 0, 0.05)
+
+// Mobile menu toggle (must be after .nav-icon to override display property)
+.mobile-menu-toggle
+  display: none
+
+  @media screen and (max-width: 767px)
+    display: block
+    color: #FFFFFF
+    font-size: 20px
+
+    .site-header.scrolled &
+      color: var(--color-text-primary)
+
+// Theme toggle button
+.theme-toggle-btn
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  width: 36px
+  height: 36px
+  background: none
+  border: none
+  cursor: pointer
+  color: var(--color-text-primary)  // default visible color
+  font-size: 18px
+  border-radius: var(--radius-btn)
+  transition: color var(--transition-fast), background var(--transition-fast)
+
+  .theme-icon
+    font-size: 20px
+    transition: transform var(--transition-normal)
+
+  &:hover
+    color: var(--color-primary)
+    background: rgba(0, 0, 0, 0.05)
+
+    .theme-icon
+      transform: rotate(180deg)
+
+  // White only on pages with hero gradient
+  .site-header:not(.scrolled):not(.no-hero) &
+    color: #FFFFFF
+
+    &:hover
+      color: rgba(255, 255, 255, 0.85)
+      background: rgba(255, 255, 255, 0.1)
+
+  // Dark text when header has solid background (scrolled)
+  .site-header.scrolled &
+    color: var(--color-text-primary)
+
+    &:hover
+      color: var(--color-primary)
+      background: rgba(0, 0, 0, 0.05)
+
+// Language switcher in header
+.lang-switcher-btn
+  font-size: 14px
+  font-weight: 500
+  color: var(--color-text-primary)  // default visible color
+  text-decoration: none
+  padding: var(--space-xs) var(--space-sm)
+  border-radius: var(--radius-btn)
+  transition: color var(--transition-fast), background var(--transition-fast)
+
+  &:hover
+    color: var(--color-primary)
+    background: rgba(0, 0, 0, 0.05)
+
+  // White only on pages with hero gradient
+  .site-header:not(.scrolled):not(.no-hero) &
+    color: #FFFFFF
+
+    &:hover
+      color: rgba(255, 255, 255, 0.85)
+      background: rgba(255, 255, 255, 0.1)
+
+  // Dark text when header has solid background (scrolled)
+  .site-header.scrolled &
+    color: var(--color-text-primary)
+
+    &:hover
+      color: var(--color-primary)
+      background: rgba(0, 0, 0, 0.05)
+
+// Search form (expandable)
+.search-form-wrap
   position: absolute
-  top: 15px
-  width: 150px
-  height: 30px
-  right: -150px
+  top: var(--space-sm)
+  right: var(--space-lg)
+  width: 0
   opacity: 0
-  transition: 0.2s ease-out
+  overflow: hidden
+  transition: width var(--transition-fast), opacity var(--transition-fast)
+
   &.on
+    width: 280px
     opacity: 1
+    right: var(--space-lg)
+
+  @media screen and (max-width: 767px)
+    position: fixed
+    top: var(--header-height)
+    left: 0
     right: 0
-  @media mq-mobile
     width: 100%
-    right: -100%
+    height: 0
+    opacity: 0
+
+    &.on
+      width: 100%
+      height: auto
+      opacity: 1
+      padding: var(--space-md)
 
 .search-form
-  position: absolute
-  top: 0
-  left: 0
-  right: 0
-  background: #fff
-  padding: 5px 15px
-  border-radius: 15px
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3)
+  position: relative
+  display: flex
+  align-items: center
+  background: var(--color-card-bg)
+  padding: var(--space-xs) var(--space-sm)
+  border-radius: var(--radius-input)
+  box-shadow: var(--shadow-header)
 
 .search-form-input
   border: none
   background: none
-  color: color-default
+  color: var(--color-text-primary)
   width: 100%
-  font: 13px font-sans
+  font: var(--font-size-sm) var(--font-sans)
   outline: none
-  &::-webkit-search-results-decoration
+  padding: var(--space-xs) 0
+
+  &::placeholder
+    color: var(--color-text-secondary)
+
+  &::-webkit-search-results-decoration,
   &::-webkit-search-cancel-button
     -webkit-appearance: none
 
 .search-form-submit
   position: absolute
+  right: var(--space-sm)
   top: 50%
-  right: 10px
-  margin-top: -7px
-  font: 13px font-icon
+  transform: translateY(-50%)
+  font: 14px forkawesome
   border: none
   background: none
-  color: #bbb
+  color: var(--color-text-secondary)
   cursor: pointer
-  &:hover, &:focus
-    color: #777
+  padding: var(--space-xs)
+
+  &:hover
+    color: var(--color-primary)
+
+// Search results dropdown
+.search-result
+  position: absolute
+  top: 100%
+  left: 0
+  right: 0
+  background: var(--color-card-bg)
+  border-radius: var(--radius-btn)
+  box-shadow: var(--shadow-card)
+  max-height: 400px
+  overflow-y: auto
+  margin-top: var(--space-xs)
+  z-index: 300
+
+  .search-result-list
+    padding: var(--space-sm)
+
+  .search-result-item
+    padding: var(--space-sm) var(--space-md)
+    border-bottom: 1px solid var(--color-border)
+
+    &:last-child
+      border-bottom: none
+
+    .search-result-title
+      font-size: var(--font-size-sm)
+      font-weight: 600
+      color: var(--color-text-primary)
+      text-decoration: none
+
+      &:hover
+        color: var(--color-primary)
+
+    .search-result-content
+      font-size: 13px
+      color: var(--color-text-secondary)
+      margin: var(--space-xs) 0 0
+      overflow: hidden
+      text-overflow: ellipsis
+      white-space: nowrap
+
+  .search-no-result
+    padding: var(--space-lg)
+    text-align: center
+    color: var(--color-text-secondary)
+    font-size: var(--font-size-sm)

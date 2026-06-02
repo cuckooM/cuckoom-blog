@@ -1,30 +1,64 @@
-<h1 class="page-title"><%= page.title %></h1>
+<%
+  var currentLang = 'zh-CN';
+  if (page && page.path && page.path.startsWith('en/')) {
+    currentLang = 'en';
+  }
 
-<div class="tags-list">
-  <h2 class="widget-title">标签云</h2>
-  <div class="widget tagcloud">
-    <% if (page.tag_names && Array.isArray(page.tag_names) && page.tag_names.length > 0) { %>
-      <%- generateEnglishTagcloud(page.tag_names) %>
-    <% } else { %>
-      <%- tagcloud({min_font: 10, max_font: 20, amount: 100, color: true, start_color: '#ccc', end_color: '#111'}) %>
-    <% } %>
+  var pageTitle = currentLang === 'en' ? 'Tags' : '标签';
+  var pageDesc = currentLang === 'en' ? 'Browse posts by tag' : '按标签浏览文章';
+%>
+
+<!-- Simplified Hero -->
+<section class="hero-section hero-simple">
+  <div class="hero-content">
+    <h1 class="hero-title"><%= pageTitle %></h1>
+    <p class="hero-description"><%= pageDesc %></p>
   </div>
+</section>
 
-  <h2 class="widget-title">标签列表</h2>
-  <div class="widget">
-    <ul class="tag-list" itemprop="keywords">
-      <% if (page.tag_names && Array.isArray(page.tag_names) && page.tag_names.length > 0) { %>
-        <% page.tag_names.forEach(function(tagObj){ %>
-        <li class="tag-list-item">
-          <% var tagName = typeof tagObj === 'string' ? tagObj : tagObj.name; %>
-          <% var tagPath = page.section === 'en' ? 'en/tags/' + tagName + '/' : 'tags/' + tagName + '/'; %>
-          <a class="tag-list-link" href="<%- url_for(tagPath) %>" rel="tag">
-            <%= tagName %>
-          </a>
-        </li>
+<!-- Tag Cloud -->
+<div class="tags-cloud-section">
+  <% if (site.tags && site.tags.length) { %>
+    <%
+      var tags = site.tags.toArray().filter(function(tag) {
+        if (currentLang === 'en') {
+          return !/[\u4e00-\u9fa5]/.test(tag.name);
+        }
+        return true;
+      });
+      var counts = tags.map(function(t) { return t.length; });
+      var minCount = tags.length > 0 ? Math.min.apply(Math, counts) : 0;
+      var maxCount = tags.length > 0 ? Math.max.apply(Math, counts) : 0;
+    %>
+    <div class="tags-cloud">
+      <% tags.forEach(function(tag) {
+        var ratio = (maxCount === minCount) ? 0.5 : (tag.length - minCount) / (maxCount - minCount);
+        var fontSize = 14 + 6 * ratio; // 14px to 20px
+      %>
+      <a href="<%- url_for(tag.path) %>" class="tag-cloud-item" style="font-size: <%= fontSize %>px;">
+        #<%= tag.name %>
+      </a>
+      <% }); %>
+    </div>
+
+    <!-- Tag List with counts -->
+    <div class="tags-list-section">
+      <div class="tags-list-grid">
+        <% tags.forEach(function(tag) { %>
+        <a href="<%- url_for(tag.path) %>" class="tag-list-item">
+          <span class="tag-list-name">#<%= tag.name %></span>
+          <span class="tag-list-count"><%= tag.length %></span>
+        </a>
         <% }); %>
+      </div>
+    </div>
+  <% } else { %>
+    <div class="tags-empty">
+      <% if (currentLang === 'en') { %>
+      <p>No tags yet.</p>
       <% } else { %>
+      <p>暂无标签。</p>
       <% } %>
-    </ul>
-  </div>
+    </div>
+  <% } %>
 </div>

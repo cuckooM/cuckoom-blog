@@ -1,0 +1,106 @@
+// ============================================
+// CuckooM Blog Design System - CSS Variables
+// ============================================
+
+:root
+  // === Colors (Light Mode) ===
+  --color-primary: #4A90D9
+  --color-bg: #FAFAFA
+  --color-card-bg: #FFFFFF
+  --color-text-primary: #333333
+  --color-text-secondary: #666666
+  --color-border: #E8E8E8
+  --color-link: #258FB8
+  --color-tag-bg: #E8F0FE
+  --color-tag-text: #4A90D9
+  --color-code-bg: #F5F5F5
+  --color-success: #4CAF50
+
+  // === Gradients ===
+  --gradient-hero-start: #4A90D9
+  --gradient-hero-end: #7C5CBF
+
+  // === Spacing (8px grid) ===
+  --space-xs: 4px
+  --space-sm: 8px
+  --space-md: 16px
+  --space-lg: 24px
+  --space-xl: 32px
+  --space-2xl: 48px
+  --space-3xl: 64px
+
+  // === Typography ===
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif
+  --font-mono: "Source Code Pro", Consolas, Monaco, "Noto Sans Mono", monospace
+  --font-size-base: 16px
+  --font-size-lg: 20px
+  --font-size-sm: 14px
+  --font-size-xs: 13px
+  --font-size-xxs: 12px
+  --line-height-base: 1.6em
+  --line-height-heading: 1.2em
+
+  // === Shadows ===
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08)
+  --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.12)
+  --shadow-header: 0 1px 4px rgba(0, 0, 0, 0.08)
+  --shadow-drawer: -4px 0 24px rgba(0, 0, 0, 0.12)
+
+  // === Border Radius ===
+  --radius-card: 12px
+  --radius-btn: 8px
+  --radius-tag: 4px
+  --radius-input: 8px
+
+  // === Transitions ===
+  --transition-fast: 0.2s ease
+  --transition-normal: 0.3s ease
+  --transition-slow: 0.5s ease
+
+  // === Layout ===
+  --content-max-width: 720px
+  --header-max-width: 1200px
+  --hero-max-width: 960px
+  --header-height: 60px
+  --sidebar-width: 300px
+
+// === Dark Mode Variables ===
+[data-theme="dark"]
+  --color-primary: #64B5F6
+  --color-bg: #1A1A2E
+  --color-card-bg: #16213E
+  --color-text-primary: #E0E0E0
+  --color-text-secondary: #A0A0A0
+  --color-border: #2D2D44
+  --color-link: #64B5F6
+  --color-tag-bg: #1E3A5F
+  --color-tag-text: #90CAF9
+  --color-code-bg: #0D1117
+  --color-success: #66BB6A
+
+  --gradient-hero-start: #1A1A2E
+  --gradient-hero-end: #16213E
+
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.24)
+  --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.32)
+  --shadow-header: 0 1px 4px rgba(0, 0, 0, 0.24)
+
+// === System Preference Auto-Detection ===
+@media (prefers-color-scheme: dark)
+  :root:not([data-theme="light"])
+    --color-primary: #64B5F6
+    --color-bg: #1A1A2E
+    --color-card-bg: #16213E
+    --color-text-primary: #E0E0E0
+    --color-text-secondary: #A0A0A0
+    --color-border: #2D2D44
+    --color-link: #64B5F6
+    --color-tag-bg: #1E3A5F
+    --color-tag-text: #90CAF9
+    --color-code-bg: #0D1117
+    --color-success: #66BB6A
+    --gradient-hero-start: #1A1A2E
+    --gradient-hero-end: #16213E
+    --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.24)
+    --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.32)
+    --shadow-header: 0 1px 4px rgba(0, 0, 0, 0.24)

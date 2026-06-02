@@ -1,51 +1,45 @@
-if sidebar is bottom
-  @import "sidebar-bottom"
-else
-  @import "sidebar-aside"
+// ============================================
+// Sidebar Styles - Hidden (replaced by drawer)
+// ============================================
 
+// Hide old sidebar since we use the drawer now
+#sidebar
+  display: none !important
+
+// Widget styles (used by sidebar drawer)
 .widget
-  @extend $base-style
-  line-height: line-height
+  line-height: var(--line-height-base)
   word-wrap: break-word
-  font-size: 14px
+  font-size: var(--font-size-sm)
+
   ul, ol
     list-style: none
     margin: 0
+
     ul, ol
-      margin: 0 0
+      margin: 0
+
     ul
       list-style: disc
+
     ol
       list-style: decimal
 
-  // 语言分组标题样式
-  h4.language-section
-    font-size: 12px
-    font-weight: bold
-    color: #4299e1
-    text-transform: uppercase
-    letter-spacing: 0.5px
-    margin: 12px 0 8px 0
-    padding-bottom: 4px
-    border-bottom: 1px solid #e2e8f0
-
-.category-list-count
-.tag-list-count
+.category-list-count,
+.tag-list-count,
 .archive-list-count
   display: inline-block
-  background-color: #e1f0fe
-  color: #2b6cb0
-  font-size: 12px
+  background: var(--color-border)
+  color: var(--color-text-secondary)
+  font-size: var(--font-size-xxs)
   font-weight: 500
   padding: 2px 8px
-  border-radius: 12px
-  margin-left: 8px
+  border-radius: 10px
+  margin-left: var(--space-xs)
   min-width: auto
   vertical-align: middle
-  transition: all 0.2s ease
-  &:before
-    content: ""
-  &:after
+
+  &:before, &:after
     content: ""
 
 .tagcloud
@@ -53,22 +47,13 @@ else
     display: inline-block
     margin: 4px 6px 4px 0
     padding: 5px 12px
-    background-color: #f1f5f8
-    color: #4a5568
+    background: var(--color-tag-bg)
+    color: var(--color-tag-text)
     border-radius: 20px
     text-decoration: none
     font-size: 12px
-    transition: all 0.2s ease
-    border: 1px solid #e2e8f0
+    transition: all var(--transition-fast)
+
     &:hover
-      background-color: #4299e1
-      color: white
-      border-color: #4299e1
-      transform: translateY(-2px)
-      box-shadow: 0 4px 8px rgba(66, 153, 225, 0.3)
-
-  .tagcloud-section
-    margin-bottom: 15px
-
-  .tagcloud-section:last-child
-    margin-bottom: 0
+      background: var(--color-primary)
+      color: #FFFFFF

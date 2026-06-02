@@ -1,8 +1,84 @@
 <%
-  // Check if current page is English
   var currentLang = 'zh-CN';
-  if (typeof page !== 'undefined' && page && page.path && page.path.startsWith('en/')) {
+  if (page && page.path && page.path.startsWith('en/')) {
     currentLang = 'en';
   }
+
+  // Get all posts
+  var allPosts = (locals && locals.posts ? locals.posts.toArray() : (site.posts ? site.posts.toArray() : []));
+  var filteredPosts = allPosts.filter(function(post) {
+    if (currentLang === 'en') {
+      return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+    }
+    return post.lang !== 'en';
+  });
+
+  // Group by year and month
+  var archives = {};
+  filteredPosts.forEach(function(post) {
+    var year = post.date.year();
+    var month = post.date.month() + 1; // 1-based
+    if (!archives[year]) archives[year] = {};
+    if (!archives[year][month]) archives[year][month] = [];
+    archives[year][month].push(post);
+  });
+
+  var monthNames = currentLang === 'en'
+    ? ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+    : ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+
+  var pageTitle = currentLang === 'en' ? 'Archives' : '归档';
+  var pageDesc = currentLang === 'en' ? 'All posts organized by date' : '按日期排列的所有文章';
 %>
-<%- partial('_partial/archive', {expand: false, index: true, posts: locals.posts || site.posts, lang: currentLang}) %>
+
+<!-- Simplified Hero -->
+<section class="hero-section hero-simple">
+  <div class="hero-content">
+    <h1 class="hero-title"><%= pageTitle %></h1>
+    <p class="hero-description"><%= pageDesc %></p>
+  </div>
+</section>
+
+<!-- Archive Timeline -->
+<div class="archive-timeline">
+  <%
+    var years = Object.keys(archives).sort(function(a, b) { return b - a; });
+    years.forEach(function(year) {
+      var months = archives[year];
+      var sortedMonths = Object.keys(months).sort(function(a, b) { return b - a; });
+  %>
+  <div class="archive-year">
+    <h2 class="archive-year-title"><%= year %></h2>
+    <% sortedMonths.forEach(function(month) { %>
+    <div class="archive-month">
+      <h3 class="archive-month-title"><%= monthNames[parseInt(month) - 1] %></h3>
+      <div class="archive-month-posts">
+        <% months[month].forEach(function(post) { %>
+        <div class="archive-post-item">
+          <span class="archive-post-date"><%- date(post.date, 'DD') %></span>
+          <a href="<%- url_for(post.path) %>" class="archive-post-title"><%= post.title %></a>
+          <% if (post.tags && post.tags.length) { %>
+          <span class="archive-post-tags">
+            <% post.tags.forEach(function(tag) { %>
+            <a href="<%- url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
+            <% }) %>
+          </span>
+          <% } %>
+        </div>
+        <% }); %>
+      </div>
+    </div>
+    <% }); %>
+  </div>
+  <% }); %>
+
+  <% if (years.length === 0) { %>
+  <div class="archive-empty">
+    <% if (currentLang === 'en') { %>
+    <p>No posts yet.</p>
+    <% } else { %>
+    <p>暂无文章。</p>
+    <% } %>
+  </div>
+  <% } %>
+</div>
