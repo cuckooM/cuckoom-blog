@@ -167,17 +167,15 @@
   }
 
   $(document).ready(function() {
-    // Search functionality
-    loadSearchData();
-
-    // Search form submit
+    // Search functionality - submit redirects to search page
     $('body').on('submit', '.search-form', function(e) {
       e.preventDefault();
-      var query = $('#search-input').val();
+      var query = $('#search-input').val().trim();
       if (query) {
-        var newUrl = window.location.pathname + (window.location.pathname.endsWith('/') ? '' : '/') + '?q=' + encodeURIComponent(query);
-        window.history.pushState(null, null, newUrl);
-        handleSearch(query);
+        // Determine current language and redirect to appropriate search page
+        var currentPath = window.location.pathname;
+        var searchPath = currentPath.startsWith('/en/') ? '/en/search/' : '/search/';
+        window.location.href = searchPath + '?q=' + encodeURIComponent(query);
       }
     });
 

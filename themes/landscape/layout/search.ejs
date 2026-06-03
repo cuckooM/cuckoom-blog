@@ -48,15 +48,22 @@
       if (!searchData) return [];
       var results = [], keywords = query.trim().toLowerCase().split(/\s+/);
       $(searchData).find('entry').each(function() {
-        var title = $(this).find('title').text(),
-            url = $(this).find('url').text(),
-            content = $(this).find('content').text(),
+        var $entry = $(this),
+            title = $entry.find('title').text(),
+            url = $entry.find('url').text(),
+            content = $entry.find('content').text(),
+            tags = $entry.find('tag').map(function() { return $(this).text(); }).get().join(' '),
+            categories = $entry.find('category').map(function() { return $(this).text(); }).get().join(' '),
             titleLower = title.toLowerCase(),
             contentLower = content.toLowerCase(),
+            tagsLower = tags.toLowerCase(),
+            categoriesLower = categories.toLowerCase(),
             matchCount = 0;
         for (var i = 0; i < keywords.length; i++) {
           if (keywords[i]) {
-            if (titleLower.indexOf(keywords[i]) > -1) matchCount += 2;
+            if (titleLower.indexOf(keywords[i]) > -1) matchCount += 3;
+            if (tagsLower.indexOf(keywords[i]) > -1) matchCount += 2;
+            if (categoriesLower.indexOf(keywords[i]) > -1) matchCount += 2;
             if (contentLower.indexOf(keywords[i]) > -1) matchCount += 1;
           }
         }
@@ -89,6 +96,21 @@
     }
 
     loadSearchData();
+
+    // Read URL query parameter on page load
+    var urlParams = new URLSearchParams(window.location.search);
+    var initialQuery = urlParams.get('q');
+    if (initialQuery) {
+      $('#search-page-input').val(decodeURIComponent(initialQuery));
+      // Trigger search after data loads
+      var initTimer = setInterval(function() {
+        if (searchData) {
+          clearInterval(initTimer);
+          $('#search-page-results').html(renderResults(getSearchResults(initialQuery)));
+        }
+      }, 100);
+      setTimeout(function() { clearInterval(initTimer); }, 2000);
+    }
 
     var debounceTimer;
     $('#search-page-input').on('input', function() {
