@@ -13,7 +13,10 @@
     }
     return post.lang !== 'en';
   });
-  var posts = filteredPosts;
+  // Sort by date descending (newest first)
+  var posts = filteredPosts.sort(function(a, b) {
+    return b.date - a.date;
+  });
 %>
 
 <!-- Hero Section (Full) -->
