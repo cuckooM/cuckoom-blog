@@ -112,11 +112,9 @@ hexo.extend.generator.register('en_posts_index', function(locals) {
 
   return {
     path: 'en/index.html',
-    layout: ['archive', 'index'],
+    layout: ['index'],
     data: {
       posts: enPosts,
-      type: 'archive',
-      layout: 'archive',
       section: 'en',
       title: 'Home',
       category_names: enCategoryNames,
