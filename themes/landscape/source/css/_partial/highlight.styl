@@ -15,15 +15,16 @@ highlight-purple = #cc99cc
 $code-block
   background: highlight-background
   margin: 0
-  padding: 10px
+  padding: 12px 14px
   border-radius: var(--radius-btn)
   overflow: auto
   color: highlight-foreground
-  line-height: font-size * line-height
+  line-height: 1.5
 
 $line-numbers
-  color: #666
-  font-size: 0.85em
+  color: #555
+  font-size: 0.8em
+  opacity: 0.6
 
 .article-entry
   pre, code
@@ -63,12 +64,14 @@ $line-numbers
       -ms-user-select: none;
       -webkit-user-select: none;
       user-select: none;
+      width: 1px  // 让行号列宽度自适应到最小
       pre
         @extend $line-numbers
         text-align: right
-        padding-right: 8px
+        padding-right: 4px  // 最小分隔距离
+        padding-left: 0
     .line
-      height: font-size * line-height
+      height: 1.5em
     .line.marked
       background: highlight-selection
   .gist
