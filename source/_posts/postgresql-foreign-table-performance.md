@@ -361,6 +361,302 @@ LEFT JOIN foreign_table r ON l.foreign_id = r.id;
 7. **数据量**：是否适合用物化视图？
 8. **数据温度**：冷热数据是否可以分区？
 
+## Spring Data JPA 场景下的优化
+
+当使用 Spring Data JPA 访问关联表时，除了上述数据库层面的优化，还需要解决 ORM 层特有的性能问题，主要是 **N+1 问题**。
+
+### 问题根源
+
+```java
+@Entity
+public class Order {
+    @Id private Long id;
+    @ManyToOne(fetch = FetchType.LAZY)  // 或 EAGER
+    @JoinColumn(name = "user_id")
+    private User user;  // 关联外部表
+}
+
+// 查询 100 个订单
+List<Order> orders = orderRepository.findAll();
+// EAGER: 1 + 100 次 SQL（N+1 问题）
+// LAZY: 访问 user 属性时触发 100 次额外查询
+```
+
+### 优化策略
+
+#### 1. JOIN FETCH（最直接）
+
+```java
+// Repository 方法
+@Query("SELECT o FROM Order o JOIN FETCH o.user WHERE o.status = :status")
+List<Order> findWithUserByStatus(@Param("status") String status);
+```
+
+生成的 SQL：
+```sql
+SELECT o.*, u.* 
+FROM orders o 
+JOIN users u ON o.user_id = u.id 
+WHERE o.status = ?
+```
+
+**适用场景**：明确知道需要关联数据，数据量可控
+
+#### 2. EntityGraph（声明式）
+
+```java
+@Entity
+@NamedEntityGraph(
+    name = "Order.withUser",
+    attributeNodes = @NamedAttributeNode("user")
+)
+public class Order { ... }
+
+// Repository
+@EntityGraph("Order.withUser")
+List<Order> findByStatus(String status);
+
+// 或动态指定
+@EntityGraph(attributePaths = {"user"})
+List<Order> findByStatus(String status);
+```
+
+**优势**：
+- 不污染 JPQL
+- 可复用
+- 支持多层嵌套：`attributePaths = {"user", "user.department"}`
+
+#### 3. 批量抓取（Batch Fetching）
+
+```yaml
+# application.yml
+spring:
+  jpa:
+    properties:
+      hibernate:
+        default_batch_fetch_size: 100
+        # 或按实体配置
+        batch_fetch_style: PADDED
+```
+
+```java
+@Entity
+@BatchSize(size = 50)  // 每次批量加载 50 个关联
+public class Order {
+    @ManyToOne
+    private User user;
+}
+```
+
+**原理**：原本 100 次 `SELECT * FROM users WHERE id = ?` 变成：
+```sql
+SELECT * FROM users WHERE id IN (?, ?, ?, ..., ?)  -- 2 次，每次 50 个
+```
+
+**适用场景**：无法预知是否需要关联数据，但访问时希望批量加载
+
+#### 4. DTO 投影（只取所需）
+
+```java
+// 接口投影
+public interface OrderSummary {
+    Long getId();
+    String getProductName();
+    String getUserName();  // 来自关联表
+}
+
+// Repository
+@Query("SELECT o.id as id, o.productName as productName, u.name as userName " +
+       "FROM Order o JOIN o.user u WHERE o.status = :status")
+List<OrderSummary> findSummariesByStatus(@Param("status") String status);
+```
+
+**优势**：
+- 单次 SQL，无额外查询
+- 不加载完整实体，内存占用小
+- 适合列表展示、报表场景
+
+#### 5. 子查询 + IN 条件（分步查询）
+
+```java
+// 第一步：查主表
+List<Order> orders = orderRepository.findByStatus("PAID");
+List<Long> userIds = orders.stream()
+    .map(Order::getUserId)
+    .distinct()
+    .toList();
+
+// 第二步：批量查关联表
+Map<Long, User> userMap = userRepository.findByIdIn(userIds)
+    .stream()
+    .collect(Collectors.toMap(User::getId, Function.identity()));
+
+// 第三步：内存组装
+orders.forEach(o -> o.setUser(userMap.get(o.getUserId())));
+```
+
+**适用场景**：
+- 关联表是 Foreign Table，需要单独优化查询
+- 关联条件复杂，JPQL 难以表达
+- 需要缓存关联数据
+
+#### 6. 二级缓存 + 缓存穿透防护
+
+```java
+@Entity
+@Cacheable
+@Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
+public class User {
+    @Id private Long id;
+    private String name;
+}
+
+// 配置缓存
+@EnableCaching
+@Configuration
+public class CacheConfig {
+    @Bean
+    public CacheManager cacheManager() {
+        CaffeineCacheManager manager = new CaffeineCacheManager();
+        manager.setCaffeine(Caffeine.newBuilder()
+            .maximumSize(10000)
+            .expireAfterWrite(Duration.ofMinutes(30)));
+        return manager;
+    }
+}
+```
+
+**适用场景**：关联表数据变化少，查询频繁
+
+#### 7. Native Query + ResultSetMapping
+
+对于 Foreign Table，直接写原生 SQL 可能更可控：
+
+```java
+@SqlResultSetMapping(
+    name = "OrderWithUserMapping",
+    entities = {
+        @EntityResult(entityClass = Order.class),
+        @EntityResult(entityClass = User.class)
+    }
+)
+@Entity
+public class Order { ... }
+
+// Repository
+@Query(value = """
+    SELECT o.*, u.* 
+    FROM orders o 
+    LEFT JOIN foreign_users u ON o.user_id = u.id 
+    WHERE o.status = :status
+    """, nativeQuery = true)
+List<Object[]> findOrdersWithUsersNative(@Param("status") String status);
+
+// 或使用投影
+@Query(value = """
+    SELECT o.id, o.product_name, u.name as user_name 
+    FROM orders o 
+    LEFT JOIN foreign_users u ON o.user_id = u.id
+    """, nativeQuery = true)
+List<OrderUserDto> findOrderUserProjection();
+```
+
+#### 8. 分页优化
+
+```java
+// 问题：JOIN FETCH + 分页 = 内存全量查询
+@Query("SELECT o FROM Order o JOIN FETCH o.user")
+Page<Order> findAll(Pageable pageable);  // 警告：全表加载到内存
+
+// 解决方案 1：两步查询
+@Query(value = "SELECT o FROM Order o WHERE o.status = :status",
+       countQuery = "SELECT COUNT(o) FROM Order o WHERE o.status = :status")
+Page<Order> findByStatus(@Param("status") String status, Pageable pageable);
+
+// 然后用 @BatchSize 或 EntityGraph 加载关联
+
+// 解决方案 2：子查询 + IN
+@Query("SELECT o FROM Order o WHERE o.id IN " +
+       "(SELECT o2.id FROM Order o2 WHERE o2.status = :status)")
+List<Order> findIdsByStatus(@Param("status") String status, Pageable pageable);
+```
+
+### JPA 策略性能对比
+
+| 策略 | SQL 次数 | 适用场景 | 内存占用 |
+|------|---------|---------|---------|
+| LAZY（默认） | 1 + N | 关联数据偶尔访问 | 低 |
+| EAGER | 1 + N | 不推荐 | 高 |
+| JOIN FETCH | 1 | 明确需要关联数据 | 中 |
+| EntityGraph | 1 | 可复用配置 | 中 |
+| @BatchSize | 1 + N/M | 不确定是否需要关联 | 中 |
+| DTO 投影 | 1 | 只需部分字段 | 低 |
+| 子查询分步 | 2 | 需要单独优化关联查询 | 中 |
+| 二级缓存 | 0（命中时） | 关联数据变化少 | 中 |
+
+### Foreign Table + JPA 的特别建议
+
+```java
+// 1. 使用 DTO 投影，避免实体管理开销
+public interface OrderUserView {
+    Long getId();
+    String getOrderNo();
+    @Value("#{target.user_name}")  // 外部表字段映射
+    String getUserName();
+}
+
+// 2. Native Query 直接控制 SQL
+@Query(value = """
+    SELECT o.id, o.order_no, u.name as user_name, u.status as user_status
+    FROM orders o
+    LEFT JOIN foreign_users u ON o.user_id = u.id
+    WHERE o.created_at > :since
+    ORDER BY o.id
+    LIMIT :limit OFFSET :offset
+    """, nativeQuery = true)
+List<OrderUserView> findRecentOrders(
+    @Param("since") LocalDateTime since,
+    @Param("limit") int limit,
+    @Param("offset") int offset
+);
+
+// 3. 分步查询 + 本地缓存
+@Service
+public class OrderService {
+    
+    private final LoadingCache<Long, User> userCache = Caffeine.newBuilder()
+        .maximumSize(10000)
+        .expireAfterWrite(Duration.ofMinutes(10))
+        .build(this::loadUser);
+    
+    private User loadUser(Long userId) {
+        return userRepository.findById(userId)
+            .orElse(User.EMPTY);
+    }
+    
+    public List<OrderVO> getOrdersWithUsers(List<Long> orderIds) {
+        List<Order> orders = orderRepository.findByIdIn(orderIds);
+        return orders.stream()
+            .map(o -> new OrderVO(o, userCache.get(o.getUserId())))
+            .toList();
+    }
+}
+```
+
+### 快速决策流程
+
+```
+需要关联数据吗？
+├── 不需要 → 用 DTO 投影，不加载关联
+└── 需要
+    ├── 数据量可控？
+    │   ├── 是 → JOIN FETCH / EntityGraph
+    │   └── 否 → @BatchSize + 分页
+    └── 关联表是 Foreign Table？
+        ├── 是 → DTO 投影 + Native Query
+        └── 否 → 根据场景选择上述方案
+```
+
 ## 总结
 
 Foreign Table 性能优化的核心思想是**让计算下推到数据源**，减少网络传输和本地计算。最有效的优化通常是：
@@ -369,6 +665,13 @@ Foreign Table 性能优化的核心思想是**让计算下推到数据源**，�
 2. **开启 use_remote_estimate** — 让优化器做更好的决策
 3. **确保远程索引** — 加速远程查询
 4. **条件下推** — 让过滤在远程执行
+
+在 Spring Data JPA 场景下，还需要解决 ORM 层的 N+1 问题，推荐策略：
+
+- **JOIN FETCH / EntityGraph**：明确需要关联数据时
+- **@BatchSize**：不确定是否需要关联数据时
+- **DTO 投影**：只需部分字段，特别是 Foreign Table 场景
+- **Native Query**：直接控制 SQL，最大化条件下推
 
 对于数据变化不频繁的场景，物化视图是最简单高效的方案。对于时间序列数据，分区表 + Foreign Table 可以实现冷热分离，兼顾查询性能和存储成本。
 
