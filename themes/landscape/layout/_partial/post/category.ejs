@@ -1,6 +1,10 @@
 <% if (post.categories && Array.isArray(post.categories) && post.categories.length){ %>
   <div class="article-category">
     <%
+      // Determine current language context
+      var currentPath = typeof pagePath !== 'undefined' ? pagePath : (page && page.path ? page.path : '');
+      var isEnglishPage = currentPath && currentPath.startsWith('en/');
+      
       post.categories.forEach(function(cat, i) {
         if (i > 0) { %>
           <span class="article-category-separator">►</span>
@@ -8,8 +12,15 @@
       }); %>
     <ul class="article-category-list">
       <% post.categories.forEach(function(cat){ %>
+        <% 
+          var categoryPath = '/categories#' + cat.toLowerCase();
+          if (isEnglishPage) {
+            var cleanCategoryName = cat.replace(/\s+/g, '-');
+            categoryPath = '/en/categories/' + encodeURIComponent(cleanCategoryName) + '/';
+          }
+        %>
         <li class="article-category-list-item">
-          <a class="article-category-list-link" href="<%- url_for('/categories#' + cat.toLowerCase()) %>">
+          <a class="article-category-list-link" href="<%- url_for(categoryPath) %>">
             <%= cat %>
           </a>
         </li>
