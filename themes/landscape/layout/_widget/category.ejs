@@ -19,7 +19,16 @@
         <ul class="category-list">
           <% filteredCategories.forEach(function(category){ %>
           <li class="category-list-item">
-            <a class="category-list-link" href="<%- url_for(category.path) %>">
+            <% 
+              // Generate correct category path based on language context
+              var categoryPath = category.path;
+              if (isEnglishPage) {
+                // For English pages, link to English category pages
+                var cleanCategoryName = category.name.replace(/\s+/g, '-');
+                categoryPath = 'en/categories/' + encodeURIComponent(cleanCategoryName) + '/';
+              }
+            %>
+            <a class="category-list-link" href="<%- url_for(categoryPath) %>">
               <%= category.name %>
             </a>
             <% if (theme.show_count){ %>

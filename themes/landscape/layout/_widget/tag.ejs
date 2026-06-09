@@ -19,7 +19,16 @@
         <ul class="tag-list" itemprop="keywords">
           <% filteredTags.forEach(function(tag){ %>
           <li class="tag-list-item">
-            <a class="tag-list-link" href="<%- url_for(tag.path) %>" rel="tag">
+            <% 
+              // Generate correct tag path based on language context
+              var tagPath = tag.path;
+              if (isEnglishPage) {
+                // For English pages, link to English tag pages
+                var cleanTagName = tag.name.replace(/\s+/g, '-');
+                tagPath = 'en/tags/' + encodeURIComponent(cleanTagName) + '/';
+              }
+            %>
+            <a class="tag-list-link" href="<%- url_for(tagPath) %>" rel="tag">
               <%= tag.name %>
             </a>
             <% if (theme.show_count){ %>
