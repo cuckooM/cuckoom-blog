@@ -23,12 +23,20 @@
            var maxFont = 24;
 
            // Generate tag cloud manually
-           filteredTags.forEach(function(tag) {
-             var ratio = (maxCount === minCount) ? 1 : (tag.length - minCount) / (maxCount - minCount);
-             var fontSize = minFont + (maxFont - minFont) * ratio;
-      %>
-             <a href="<%= url_for(tag.path) %>" style="font-size: <%= fontSize %>px;"><%= tag.name %></a>
-      <%
+                     filteredTags.forEach(function(tag) {
+                       var ratio = (maxCount === minCount) ? 1 : (tag.length - minCount) / (maxCount - minCount);
+                       var fontSize = minFont + (maxFont - minFont) * ratio;
+            
+                       // Generate correct tag path based on language context
+                       var tagPath = tag.path;
+                       if (isEnglishPage) {
+                         // For English pages, link to English tag pages
+                         var cleanTagName = tag.name.replace(/\s+/g, '-');
+                         tagPath = 'en/tags/' + encodeURIComponent(cleanTagName) + '/';
+                       }
+                 %>
+                       <a href="<%= url_for(tagPath) %>" style="font-size: <%= fontSize %>px;"><%= tag.name %></a>
+                 <%
            });
          }
       %>
