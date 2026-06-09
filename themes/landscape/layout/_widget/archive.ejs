@@ -4,21 +4,29 @@
     <div class="widget">
       <ul class="archive-list">
         <%
+        // Get current language from page object
+        var currentLang = 'zh-CN';
+        if (typeof page !== 'undefined' && page && page.path && page.path.startsWith('en/')) {
+          currentLang = 'en';
+        }
+
+        // Filter posts by language
+        var filteredPosts = site.posts.toArray().filter(function(post) {
+          if (currentLang === 'en') {
+            return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+          }
+          return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+        });
+
         // Group posts by year and month
         var archives = {};
-        site.posts.forEach(function(post) {
+        filteredPosts.forEach(function(post) {
           var year = post.date.year();
           var month = post.date.format('MM');
           if (!archives[year]) archives[year] = {};
           if (!archives[year][month]) archives[year][month] = [];
           archives[year][month].push(post);
         });
-
-        // Get current language from page object
-        var currentLang = 'zh-CN';
-        if (typeof page !== 'undefined' && page && page.path && page.path.startsWith('en/')) {
-          currentLang = 'en';
-        }
 
         // Generate language prefix
         var langPrefix = currentLang === 'en' ? 'en/' : '';
