@@ -3,16 +3,12 @@
     <h3 class="widget-title"><%= __('categories') %></h3>
     <div class="widget">
       <%
-         // Determine current language context based on path
-         var currentPath = typeof pagePath !== 'undefined' ? pagePath : (page && page.path ? page.path : '');
-         var isEnglishPage = currentPath && currentPath.startsWith('en/');
-
-         // Get categories based on language context using our helper
-         var filteredCategories = isEnglishPage ?
-           getLangSpecificCategories('en') :
-           site.categories.toArray().filter(function(category) {
-             return /[\u4e00-\u9fa5]/.test(category.name);
-           });
+        // Helper will determine language from page context
+        var filteredCategories = (page && page.path && page.path.startsWith('en/')) ?
+          getLangSpecificCategories('en') :
+          site.categories.toArray().filter(function(cat) {
+            return /[\u4e00-\u9fa5]/.test(cat.name);
+          });
       %>
 
       <% if (filteredCategories.length > 0) { %>
