@@ -13,9 +13,6 @@ hexo.extend.helper.register('localized_url_for', function(path) {
   // Normalize path to always start with /
   const normalizedPath = path.startsWith('/') ? path : '/' + path;
 
-  // Debug output (can be removed after verification)
-  console.log(`[localized_url_for] currentPath: ${currentPath}, isEnglishPage: ${isEnglishPage}, inputPath: ${path}, normalizedPath: ${normalizedPath}`);
-
   // Handle various path transformations based on current page language
   if (isEnglishPage) {
     // If we're on an English page and the path is a Chinese category or tag path
@@ -23,20 +20,14 @@ hexo.extend.helper.register('localized_url_for', function(path) {
     if (normalizedPath.startsWith('/categories/') || normalizedPath.startsWith('/tags/')) {
       // Convert to English version
       if (normalizedPath.startsWith('/categories/')) {
-        const result = this.url_for(normalizedPath.replace('/categories/', '/en/categories/'));
-        console.log(`[localized_url_for] Converting Chinese category to English: ${normalizedPath} -> ${result}`);
-        return result;
+        return this.url_for(normalizedPath.replace('/categories/', '/en/categories/'));
       } else if (normalizedPath.startsWith('/tags/')) {
-        const result = this.url_for(normalizedPath.replace('/tags/', '/en/tags/'));
-        console.log(`[localized_url_for] Converting Chinese tag to English: ${normalizedPath} -> ${result}`);
-        return result;
+        return this.url_for(normalizedPath.replace('/tags/', '/en/tags/'));
       }
     }
     // If path is already an English path, return it as-is
     else if (normalizedPath.startsWith('/en/categories/') || normalizedPath.startsWith('/en/tags/')) {
-      const result = this.url_for(normalizedPath);
-      console.log(`[localized_url_for] Already English path: ${normalizedPath} -> ${result}`);
-      return result;
+      return this.url_for(normalizedPath);
     }
     // For other paths on English pages, return them as-is if they're already English
     else if (normalizedPath.startsWith('/en/')) {
@@ -65,7 +56,5 @@ hexo.extend.helper.register('localized_url_for', function(path) {
   }
 
   // Otherwise return the original path through url_for
-  const fallbackResult = this.url_for(normalizedPath);
-  console.log(`[localized_url_for] Fallback: ${normalizedPath} -> ${fallbackResult}`);
-  return fallbackResult;
+  return this.url_for(normalizedPath);
 });
