@@ -18,6 +18,24 @@
           }
           return true; // Show all categories on Chinese pages
         });
+        
+        // Recalculate counts based on language
+        categories = categories.map(function(cat) {
+          var filteredPosts = cat.posts.toArray().filter(function(post) {
+            if (currentLang === 'en') {
+              return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+            }
+            return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+          });
+          return {
+            name: cat.name,
+            path: cat.path,
+            length: filteredPosts.length
+          };
+        }).filter(function(cat) {
+          return cat.length > 0; // Remove empty categories
+        });
+        
         categories.forEach(function(cat) {
       %>
       <li>
@@ -43,6 +61,24 @@
           }
           return true;
         });
+        
+        // Recalculate counts based on language
+        tags = tags.map(function(tag) {
+          var filteredPosts = tag.posts.toArray().filter(function(post) {
+            if (currentLang === 'en') {
+              return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+            }
+            return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+          });
+          return {
+            name: tag.name,
+            path: tag.path,
+            length: filteredPosts.length
+          };
+        }).filter(function(tag) {
+          return tag.length > 0; // Remove empty tags
+        });
+        
         var counts = tags.map(function(t) { return t.length; });
         var minCount = tags.length > 0 ? Math.min.apply(Math, counts) : 0;
         var maxCount = tags.length > 0 ? Math.max.apply(Math, counts) : 0;
