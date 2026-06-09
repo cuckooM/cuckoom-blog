@@ -3,12 +3,54 @@
     <h3 class="widget-title"><%= __('categories') %></h3>
     <div class="widget">
       <%
-        // Helper will determine language from page context
-        var filteredCategories = (page && page.path && page.path.startsWith('en/')) ?
-          getLangSpecificCategories('en') :
-          site.categories.toArray().filter(function(cat) {
-            return /[\u4e00-\u9fa5]/.test(cat.name);
+        // Filter categories and recalculate counts based on language
+        var filteredCategories = site.categories.toArray().filter(function(cat) {
+          var filteredCategories = site.categories.toArray().filter(function(cat) {
+                    if (page && page.path && page.path.startsWith('en/')) {
+                      return !/[\u4e00-\u9fa5]/.test(cat.name);
+                    }
+                    return /[\u4e00-\u9fa5]/.test(cat.name);
+                  });
+
+                  // Recalculate category counts based on language
+                  filteredCategories = filteredCategories.map(function(cat) {
+                    var posts = cat.posts.toArray().filter(function(post) {
+                      if (page && page.path && page.path.startsWith('en/')) {
+                        return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+                      }
+                      return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+                    });
+                    return {
+                      name: cat.name,
+                      path: cat.path,
+                      length: posts.length
+                    };
+                  });
+
+                  // Remove categories with zero posts
+                  filteredCategories = filteredCategories.filter(function(cat) {
+                    return cat.length > 0;
+                  });
+                %>
+        // Recalculate category counts based on language
+        filteredCategories = filteredCategories.map(function(cat) {
+          var posts = cat.posts.toArray().filter(function(post) {
+            if (page && page.path && page.path.startsWith('en/')) {
+              return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+            }
+            return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
           });
+          return {
+            name: cat.name,
+            path: cat.path,
+            length: posts.length
+          };
+        });
+
+        // Remove categories with zero posts
+        filteredCategories = filteredCategories.filter(function(cat) {
+          return cat.length > 0;
+        });
       %>
 
       <% if (filteredCategories.length > 0) { %>

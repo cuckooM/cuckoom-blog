@@ -20,12 +20,35 @@
 <div class="category-grid">
   <% if (site.categories && site.categories.length) { %>
     <%
+      // Filter categories by language (based on category name)
       var categories = site.categories.toArray().filter(function(cat) {
         if (currentLang === 'en') {
           return !/[\u4e00-\u9fa5]/.test(cat.name);
         }
         return true;
       });
+
+      // Recalculate category counts based on language
+      categories = categories.map(function(cat) {
+        var posts = cat.posts.toArray().filter(function(post) {
+          if (currentLang === 'en') {
+            return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+          }
+          return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+        });
+        return {
+          name: cat.name,
+          path: cat.path,
+          length: posts.length,
+          posts: posts
+        };
+      });
+
+      // Remove categories with zero posts
+      categories = categories.filter(function(cat) {
+        return cat.length > 0;
+      });
+
       categories.forEach(function(cat) {
     %>
     <a href="<%- localized_url_for(cat.path) %>" class="category-card">

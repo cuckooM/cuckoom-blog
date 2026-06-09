@@ -3,14 +3,35 @@
     <h3 class="widget-title"><%= __('tags') %></h3>
     <div class="widget tagcloud">
       <%
-        // Helper will determine language from page context
-        var filteredTags = (page && page.path && page.path.startsWith('en/')) ?
-          getLangSpecificTags('en') :
-          site.tags.toArray().filter(function(tag) {
-            return /[\u4e00-\u9fa5]/.test(tag.name);
+        // Filter tags and recalculate counts based on language
+        var filteredTags = site.tags.toArray().filter(function(tag) {
+          if (page && page.path && page.path.startsWith('en/')) {
+            return !/[\u4e00-\u9fa5]/.test(tag.name);
+          }
+          return /[\u4e00-\u9fa5]/.test(tag.name);
+        });
+
+        // Recalculate tag counts based on language
+        filteredTags = filteredTags.map(function(tag) {
+          var posts = tag.posts.toArray().filter(function(post) {
+            if (page && page.path && page.path.startsWith('en/')) {
+              return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+            }
+            return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
           });
-      %>
-         // Calculate min and max counts for font size calculation
+          return {
+            name: tag.name,
+            path: tag.path,
+            length: posts.length
+          };
+        });
+
+        // Remove tags with zero posts
+        filteredTags = filteredTags.filter(function(tag) {
+          return tag.length > 0;
+        });
+
+        // Calculate font sizes for tag cloud
          if (filteredTags.length > 0) {
            var counts = filteredTags.map(function(tag) { return tag.length; });
            var minCount = Math.min.apply(Math, counts);

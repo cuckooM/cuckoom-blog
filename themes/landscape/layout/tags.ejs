@@ -20,12 +20,35 @@
 <div class="tags-cloud-section">
   <% if (site.tags && site.tags.length) { %>
     <%
+      // Filter tags by language (based on tag name)
       var tags = site.tags.toArray().filter(function(tag) {
         if (currentLang === 'en') {
           return !/[\u4e00-\u9fa5]/.test(tag.name);
         }
         return true;
       });
+
+      // Recalculate tag counts based on language
+      tags = tags.map(function(tag) {
+        var posts = tag.posts.toArray().filter(function(post) {
+          if (currentLang === 'en') {
+            return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+          }
+          return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+        });
+        return {
+          name: tag.name,
+          path: tag.path,
+          length: posts.length,
+          posts: posts
+        };
+      });
+
+      // Remove tags with zero posts
+      tags = tags.filter(function(tag) {
+        return tag.length > 0;
+      });
+
       var counts = tags.map(function(t) { return t.length; });
       var minCount = tags.length > 0 ? Math.min.apply(Math, counts) : 0;
       var maxCount = tags.length > 0 ? Math.max.apply(Math, counts) : 0;
