@@ -66,8 +66,17 @@
     <h3 class="widget-title"><%= __('archive_a') %></h3>
     <ul class="widget-list">
       <%
+        // Filter posts by language
+        var filteredPosts = site.posts.toArray().filter(function(post) {
+          if (currentLang === 'en') {
+            return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+          }
+          return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+        });
+
+        // Group filtered posts by year and month
         var archives = {};
-        site.posts.forEach(function(post) {
+        filteredPosts.forEach(function(post) {
           var year = post.date.year();
           var month = post.date.format('MM');
           if (!archives[year]) archives[year] = {};

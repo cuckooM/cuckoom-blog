@@ -10,7 +10,7 @@
     if (currentLang === 'en') {
       return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
     }
-    return post.lang !== 'en';
+    return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
   });
 
   // Group by year and month
