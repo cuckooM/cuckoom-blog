@@ -3,16 +3,12 @@
     <h3 class="widget-title"><%= __('tags') %></h3>
     <div class="widget">
       <%
-         // Determine current language context based on path
-         var currentPath = typeof pagePath !== 'undefined' ? pagePath : (page && page.path ? page.path : '');
-         var isEnglishPage = currentPath && currentPath.startsWith('en/');
-
-         // Get tags based on language context using our helper
-         var filteredTags = isEnglishPage ?
-           getLangSpecificTags('en') :
-           site.tags.toArray().filter(function(tag) {
-             return /[\u4e00-\u9fa5]/.test(tag.name);
-           });
+        // Helper will determine language from page context
+        var filteredTags = (page && page.path && page.path.startsWith('en/')) ?
+          getLangSpecificTags('en') :
+          site.tags.toArray().filter(function(tag) {
+            return /[\u4e00-\u9fa5]/.test(tag.name);
+          });
       %>
 
       <% if (filteredTags.length > 0) { %>
