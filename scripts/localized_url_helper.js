@@ -1,6 +1,9 @@
 /**
  * Custom URL helper to handle multilingual routing
  * Modifies url_for behavior based on current page language context
+ * 
+ * This helper is used to automatically convert tag and category paths
+ * to their language-specific versions (e.g., /tags/AI/ -> /en/tags/AI/)
  */
 hexo.extend.helper.register('localized_url_for', function(path) {
   // Get current page context
@@ -10,12 +13,13 @@ hexo.extend.helper.register('localized_url_for', function(path) {
   // Handle various path transformations based on current page language
   if (isEnglishPage) {
     // If we're on an English page and the path is a Chinese category or tag path
+    // This handles both /categories/ and /tags/ with or without specific names
     if (path.startsWith('/categories/') || path.startsWith('/tags/')) {
       // Convert to English version
       if (path.startsWith('/categories/')) {
-        return path.replace('/categories/', '/en/categories/');
+        return this.url_for(path.replace('/categories/', '/en/categories/'));
       } else if (path.startsWith('/tags/')) {
-        return path.replace('/tags/', '/en/tags/');
+        return this.url_for(path.replace('/tags/', '/en/tags/'));
       }
     }
     // If path is already an English path, return it as-is

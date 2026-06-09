@@ -1,20 +1,8 @@
 <% if (post.tags && Array.isArray(post.tags) && post.tags.length){ %>
-  <%
-    // Determine current language context
-    var currentPath = typeof pagePath !== 'undefined' ? pagePath : (page && page.path ? page.path : '');
-    var isEnglishPage = currentPath && currentPath.startsWith('en/');
-  %>
   <ul class="article-tag-list">
     <% post.tags.forEach(function(tag){ %>
-      <% 
-        var tagPath = '/tags#' + tag.toLowerCase().replace(/ /g, '-');
-        if (isEnglishPage) {
-          var cleanTagName = tag.replace(/\s+/g, '-');
-          tagPath = '/en/tags/' + encodeURIComponent(cleanTagName) + '/';
-        }
-      %>
       <li class="article-tag-list-item">
-        <a class="article-tag-list-link" href="<%- url_for(tagPath) %>">
+        <a class="article-tag-list-link" href="<%- localized_url_for('/tags/' + tag.toLowerCase().replace(/ /g, '-') + '/') %>">
           <%= tag %>
         </a>
       </li>
