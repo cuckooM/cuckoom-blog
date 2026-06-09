@@ -35,7 +35,7 @@
         var ratio = (maxCount === minCount) ? 0.5 : (tag.length - minCount) / (maxCount - minCount);
         var fontSize = 14 + 6 * ratio; // 14px to 20px
       %>
-      <a href="<%- url_for(tag.path) %>" class="tag-cloud-item" style="font-size: <%= fontSize %>px;">
+      <a href="<%- localized_url_for(tag.path) %>" class="tag-cloud-item" style="font-size: <%= fontSize %>px;">
         #<%= tag.name %>
       </a>
       <% }); %>
@@ -45,7 +45,7 @@
     <div class="tags-list-section">
       <div class="tags-list-grid">
         <% tags.forEach(function(tag) { %>
-        <a href="<%- url_for(tag.path) %>" class="tag-list-item">
+        <a href="<%- localized_url_for(tag.path) %>" class="tag-list-item">
           <span class="tag-list-name">#<%= tag.name %></span>
           <span class="tag-list-count"><%= tag.length %></span>
         </a>
