@@ -47,11 +47,11 @@
         <!-- Card Meta -->
         <div class="card-meta">
           <span class="meta-item"><%- date(post.date, 'YYYY-MM-DD') %></span>
-          <% if (post.categories && post.categories.length) { %>
-            <span class="meta-item">
-              <a href="<%- url_for(post.categories.data[0].path) %>"><%= post.categories.data[0].name %></a>
-            </span>
-          <% } %>
+                    <% if (post.categories && post.categories.length) { %>
+                      <span class="meta-item">
+                        <a href="<%- localized_url_for(post.categories.data[0].path) %>"><%= post.categories.data[0].name %></a>
+                      </span>
+                    <% } %>
         </div>
 
         <!-- Card Excerpt -->
@@ -67,12 +67,12 @@
 
         <!-- Card Tags -->
         <% if (post.tags && post.tags.length) { %>
-        <div class="card-tags">
-          <% post.tags.forEach(function(tag) { %>
-          <a href="<%- url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
-          <% }) %>
-        </div>
-        <% } %>
+                <div class="card-tags">
+                  <% post.tags.forEach(function(tag) { %>
+                  <a href="<%- localized_url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
+                  <% }) %>
+                </div>
+                <% } %>
 
         <!-- Read More -->
         <div class="card-read-more">
