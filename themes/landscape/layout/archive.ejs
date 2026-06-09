@@ -13,11 +13,20 @@
     return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
   });
 
+  // Check if we're on a specific year/month archive page
+  var currentYear = page && page.year ? parseInt(page.year) : null;
+  var currentMonth = page && page.month ? parseInt(page.month) : null;
+
   // Group by year and month
   var archives = {};
   filteredPosts.forEach(function(post) {
     var year = post.date.year();
     var month = post.date.month() + 1; // 1-based
+
+    // If we're on a specific year/month page, only include matching posts
+    if (currentYear && year !== currentYear) return;
+    if (currentMonth && month !== currentMonth) return;
+
     if (!archives[year]) archives[year] = {};
     if (!archives[year][month]) archives[year][month] = [];
     archives[year][month].push(post);
@@ -28,6 +37,11 @@
     : ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
 
   var pageTitle = currentLang === 'en' ? 'Archives' : '归档';
+  if (currentYear && currentMonth) {
+    pageTitle = monthNames[currentMonth - 1] + ' ' + currentYear;
+  } else if (currentYear) {
+    pageTitle = currentYear;
+  }
   var pageDesc = currentLang === 'en' ? 'All posts organized by date' : '按日期排列的所有文章';
 %>
 
