@@ -19,13 +19,27 @@
     <span class="meta-date"><%- date(page.date, 'YYYY-MM-DD') %></span>
     <% if (page.categories && page.categories.length) { %>
       <span class="meta-sep">&middot;</span>
-      <a href="<%- url_for(page.categories.data[0].path) %>" class="meta-category"><%= page.categories.data[0].name %></a>
+      <% 
+        var categoryPath = page.categories.data[0].path;
+        if (currentLang === 'en') {
+          var cleanCategoryName = page.categories.data[0].name.replace(/\s+/g, '-');
+          categoryPath = 'en/categories/' + encodeURIComponent(cleanCategoryName) + '/';
+        }
+      %>
+      <a href="<%- url_for(categoryPath) %>" class="meta-category"><%= page.categories.data[0].name %></a>
     <% } %>
     <% if (page.tags && page.tags.length) { %>
       <span class="meta-sep">&middot;</span>
       <span class="meta-tags">
         <% page.tags.forEach(function(tag) { %>
-        <a href="<%- url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
+        <% 
+          var tagPath = tag.path;
+          if (currentLang === 'en') {
+            var cleanTagName = tag.name.replace(/\s+/g, '-');
+            tagPath = 'en/tags/' + encodeURIComponent(cleanTagName) + '/';
+          }
+        %>
+        <a href="<%- url_for(tagPath) %>" class="tag-pill">#<%= tag.name %></a>
         <% }) %>
       </span>
     <% } %>
