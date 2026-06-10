@@ -88,6 +88,43 @@ hexo.extend.filter.register('after_generate', function() {
   });
   
   log.info(`[i18n_route] Successfully relocated ${routesToMove.length} non-default language posts`);
+  
+  // 处理 pages（如 about 页面）
+  // hexo-generator-i18n 生成的多语言页面路径有问题：
+  // - /en/about/ko-index.html 是韩语内容，但路径错误
+  // - /ko/about/index.html 是默认内容，但应该替换为韩语
+  const pages = this.locals.get('pages');
+  const nonDefaultPages = pages.toArray().filter(page => page.lang && page.lang !== defaultLang);
+  
+  if (nonDefaultPages.length > 0) {
+    log.info(`[i18n_route] Found ${nonDefaultPages.length} non-default language pages to fix`);
+    
+    nonDefaultPages.forEach(page => {
+      // 获取页面目录名（如 about）
+      const pageDir = page.source.replace('source/', '').replace(/ko-.*\.md/, '').replace(/\/$/, '').replace('.md', '');
+      
+      // 查找 hexo-generator-i18n 生成的韩语内容（在错误位置）
+      const wrongPath = `en/${pageDir}/ko-index.html`;
+      
+      // 正确的目标路径
+      const correctPath = `ko/${pageDir}/index.html`;
+      
+      if (route.routes[wrongPath]) {
+        const routeData = route.routes[wrongPath];
+        
+        // 在正确位置设置韩语内容
+        route.set(correctPath, {
+          data: routeData.data,
+          modified: routeData.modified
+        });
+        
+        // 删除错误位置的文件
+        route.remove(wrongPath);
+        
+        log.info(`[i18n_route] Fixed page: ${wrongPath} → ${correctPath}`);
+      }
+    });
+  }
 });
 
 // 注册 helper 函数：根据当前语言过滤文章列表
