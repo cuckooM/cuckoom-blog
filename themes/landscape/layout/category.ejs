@@ -31,7 +31,7 @@
           <span class="meta-item"><%- date(post.date, 'YYYY-MM-DD') %></span>
           <% if (post.categories && post.categories.length) { %>
             <span class="meta-item">
-              <a href="<%- url_for(post.categories.data[0].path) %>"><%= post.categories.data[0].name %></a>
+              <a href="<%- url_with_lang(post.categories.data[0].path, currentLang) %>"><%= post.categories.data[0].name %></a>
             </span>
           <% } %>
         </div>
@@ -43,7 +43,7 @@
         <% if (post.tags && post.tags.length) { %>
         <div class="card-tags">
           <% post.tags.forEach(function(tag) { %>
-          <a href="<%- url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
+          <a href="<%- url_with_lang(tag.path, currentLang) %>" class="tag-pill">#<%= tag.name %></a>
           <% }) %>
         </div>
         <% } %>

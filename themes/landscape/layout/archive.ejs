@@ -71,7 +71,7 @@
           <% if (post.tags && post.tags.length) { %>
           <span class="archive-post-tags">
             <% post.tags.forEach(function(tag) { %>
-            <a href="<%- url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
+            <a href="<%- url_with_lang(tag.path, currentLang) %>" class="tag-pill">#<%= tag.name %></a>
             <% }) %>
           </span>
           <% } %>
