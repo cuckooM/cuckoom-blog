@@ -3,42 +3,24 @@
     <h3 class="widget-title"><%= __('categories') %></h3>
     <div class="widget">
       <%
-        // Filter categories and recalculate counts based on language
+        // Get current language from helper
+        var currentLang = page.lang || "zh-CN";
+
+        // Filter categories by language
         var filteredCategories = site.categories.toArray().filter(function(cat) {
-          var filteredCategories = site.categories.toArray().filter(function(cat) {
-                    if (page && page.path && page.path.startsWith('en/')) {
-                      return !/[\u4e00-\u9fa5]/.test(cat.name);
-                    }
-                    return /[\u4e00-\u9fa5]/.test(cat.name);
-                  });
+          if (currentLang === 'en') {
+            return !/[\u4e00-\u9fa5]/.test(cat.name);
+          }
+          return /[\u4e00-\u9fa5]/.test(cat.name);
+        });
 
-                  // Recalculate category counts based on language
-                  filteredCategories = filteredCategories.map(function(cat) {
-                    var posts = cat.posts.toArray().filter(function(post) {
-                      if (page && page.path && page.path.startsWith('en/')) {
-                        return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
-                      }
-                      return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
-                    });
-                    return {
-                      name: cat.name,
-                      path: cat.path,
-                      length: posts.length
-                    };
-                  });
-
-                  // Remove categories with zero posts
-                  filteredCategories = filteredCategories.filter(function(cat) {
-                    return cat.length > 0;
-                  });
-                %>
         // Recalculate category counts based on language
         filteredCategories = filteredCategories.map(function(cat) {
           var posts = cat.posts.toArray().filter(function(post) {
-            if (page && page.path && page.path.startsWith('en/')) {
-              return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+            if (currentLang === 'en') {
+              return post.lang === 'en';
             }
-            return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+            return post.lang !== 'en';
           });
           return {
             name: cat.name,
@@ -57,7 +39,7 @@
         <ul class="category-list">
           <% filteredCategories.forEach(function(category){ %>
           <li class="category-list-item">
-            <a class="category-list-link" href="<%- localized_url_for(category.path) %>">
+            <a class="category-list-link" href="<%- url_for(category.path) %>">
               <%= category.name %>
             </a>
             <% if (theme.show_count){ %>

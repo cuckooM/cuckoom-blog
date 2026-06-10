@@ -2,7 +2,7 @@
   <ul class="article-tag-list">
     <% post.tags.forEach(function(tag){ %>
       <li class="article-tag-list-item">
-        <a class="article-tag-list-link" href="<%- localized_url_for('/tags/' + tag.toLowerCase().replace(/ /g, '-') + '/') %>">
+        <a class="article-tag-list-link" href="<%- url_for('/tags/' + tag.toLowerCase().replace(/ /g, '-') + '/') %>">
           <%= tag %>
         </a>
       </li>

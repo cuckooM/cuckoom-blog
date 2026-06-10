@@ -1,11 +1,6 @@
 <%
-  // Language detection
-  var currentLang = 'zh-CN';
-  if (page && page.path) {
-    if (page.path.startsWith('en/')) {
-      currentLang = 'en';
-    }
-  }
+  // Get current language from page.lang
+  var currentLang = page.lang || "zh-CN";
 
   // Toggle: show the opposite language label
   var toggleLabel = (currentLang === 'zh-CN') ? 'EN' : '中文';

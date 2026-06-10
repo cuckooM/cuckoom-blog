@@ -8,10 +8,7 @@
     <h3 class="widget-title"><%= __('categories') %></h3>
     <ul class="widget-list">
       <%
-        var currentLang = 'zh-CN';
-        if (page && page.path && page.path.startsWith('en/')) {
-          currentLang = 'en';
-        }
+        var currentLang = page.lang || "zh-CN";
         var categories = site.categories.toArray().filter(function(cat) {
           if (currentLang === 'en') {
             return !/[\u4e00-\u9fa5]/.test(cat.name);
@@ -23,9 +20,9 @@
         categories = categories.map(function(cat) {
           var filteredPosts = cat.posts.toArray().filter(function(post) {
             if (currentLang === 'en') {
-              return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+              return post.lang === 'en';
             }
-            return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+            return post.lang !== 'en';
           });
           return {
             name: cat.name,
@@ -39,7 +36,7 @@
         categories.forEach(function(cat) {
       %>
       <li>
-        <a href="<%- localized_url_for(cat.path) %>"><%= cat.name %></a>
+        <a href="<%- url_for(cat.path) %>"><%= cat.name %></a>
         <% if (theme.show_count) { %>
           <span class="widget-count"><%= cat.length %></span>
         <% } %>
@@ -66,9 +63,9 @@
         tags = tags.map(function(tag) {
           var filteredPosts = tag.posts.toArray().filter(function(post) {
             if (currentLang === 'en') {
-              return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+              return post.lang === 'en';
             }
-            return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+            return post.lang !== 'en';
           });
           return {
             name: tag.name,
@@ -89,7 +86,7 @@
           var fontSize = minFont + (maxFont - minFont) * ratio;
       %>
       <li>
-        <a href="<%= localized_url_for(tag.path) %>" style="font-size: <%= fontSize %>px;"><%= tag.name %></a>
+        <a href="<%= url_for(tag.path) %>" style="font-size: <%= fontSize %>px;"><%= tag.name %></a>
       </li>
       <% }); %>
     </ul>
@@ -105,9 +102,9 @@
         // Filter posts by language
         var filteredPosts = site.posts.toArray().filter(function(post) {
           if (currentLang === 'en') {
-            return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+            return post.lang === 'en';
           }
-          return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+          return post.lang !== 'en';
         });
 
         // Group filtered posts by year and month
@@ -160,7 +157,7 @@
         recentPosts.forEach(function(post) {
       %>
       <li>
-        <a href="<%- url_for(post.path) %>"><%= post.title || '(no title)' %></a>
+        <a href="<%- post_url_i18n(post) %>"><%= post.title || '(no title)' %></a>
       </li>
       <% }); %>
     </ul>

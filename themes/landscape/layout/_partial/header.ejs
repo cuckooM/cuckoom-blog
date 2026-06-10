@@ -10,12 +10,7 @@
       <a id="main-nav-toggle" class="nav-icon mobile-menu-toggle" title="菜单"><span class="fa fa-bars"></span></a>
       <% if (config.theme_config && config.theme_config.menu) { %>
         <%
-          var currentLang = 'zh-CN';
-          if (page && page.path) {
-            if (page.path.startsWith('en/')) {
-              currentLang = 'en';
-            }
-          }
+          var currentLang = page.lang || "zh-CN";
           var menuData = config.theme_config.menu[currentLang] || config.theme_config.menu['zh-CN'] || config.theme_config.menu;
           for (var i in menuData){
             if (typeof menuData[i] === 'string') {
@@ -172,9 +167,8 @@
       e.preventDefault();
       var query = $('#search-input').val().trim();
       if (query) {
-        // Determine current language and redirect to appropriate search page
-        var currentPath = window.location.pathname;
-        var searchPath = currentPath.startsWith('/en/') ? '/en/search/' : '/search/';
+        // Determine current language from URL path
+        var searchPath = window.location.pathname.startsWith('/en/') ? '/en/search/' : '/search/';
         window.location.href = searchPath + '?q=' + encodeURIComponent(query);
       }
     });

@@ -1,15 +1,12 @@
 <%
-  // Determine current language
-  var currentLang = 'zh-CN';
-  if (page && page.path && page.path.startsWith('en/')) {
-    currentLang = 'en';
-  }
+  // Get current language from page.lang (injected by multi_lang_generator)
+  var currentLang = page.lang || "zh-CN";
 
   // Get posts for this language
   var allPosts = (locals && locals.posts ? locals.posts.toArray() : (site.posts ? site.posts.toArray() : []));
   var filteredPosts = allPosts.filter(function(post) {
     if (currentLang === 'en') {
-      return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+      return post.lang === 'en';
     }
     return post.lang !== 'en';
   });
@@ -41,7 +38,7 @@
       <article class="article-card">
         <!-- Card Title -->
         <h2 class="card-title">
-          <a href="<%- url_for(post.path) %>"><%= post.title || '(no title)' %></a>
+          <a href="<%- post_url_i18n(post) %>"><%= post.title || '(no title)' %></a>
         </h2>
 
         <!-- Card Meta -->
@@ -49,7 +46,7 @@
           <span class="meta-item"><%- date(post.date, 'YYYY-MM-DD') %></span>
                     <% if (post.categories && post.categories.length) { %>
                       <span class="meta-item">
-                        <a href="<%- localized_url_for(post.categories.data[0].path) %>"><%= post.categories.data[0].name %></a>
+                        <a href="<%- url_for(post.categories.data[0].path) %>"><%= post.categories.data[0].name %></a>
                       </span>
                     <% } %>
         </div>
@@ -69,14 +66,14 @@
         <% if (post.tags && post.tags.length) { %>
                 <div class="card-tags">
                   <% post.tags.forEach(function(tag) { %>
-                  <a href="<%- localized_url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
+                  <a href="<%- url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
                   <% }) %>
                 </div>
                 <% } %>
 
         <!-- Read More -->
         <div class="card-read-more">
-          <a href="<%- url_for(post.path) %>"><%- currentLang === 'en' ? 'Read More &rarr;' : '阅读更多 &rarr;' %></a>
+          <a href="<%- post_url_i18n(post) %>"><%- currentLang === 'en' ? 'Read More &rarr;' : '阅读更多 &rarr;' %></a>
         </div>
       </article>
     <% }); %>

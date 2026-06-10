@@ -1,16 +1,13 @@
 <%
-  var currentLang = 'zh-CN';
-  if (page && page.path && page.path.startsWith('en/')) {
-    currentLang = 'en';
-  }
+  var currentLang = page.lang || "zh-CN";
 
   // Get all posts
   var allPosts = (locals && locals.posts ? locals.posts.toArray() : (site.posts ? site.posts.toArray() : []));
   var filteredPosts = allPosts.filter(function(post) {
     if (currentLang === 'en') {
-      return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+      return post.lang === 'en';
     }
-    return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+    return post.lang !== 'en';
   });
 
   // Check if we're on a specific year/month archive page
@@ -70,7 +67,7 @@
         <% months[month].forEach(function(post) { %>
         <div class="archive-post-item">
           <span class="archive-post-date"><%- date(post.date, 'DD') %></span>
-          <a href="<%- url_for(post.path) %>" class="archive-post-title"><%= post.title %></a>
+          <a href="<%- post_url_i18n(post) %>" class="archive-post-title"><%= post.title %></a>
           <% if (post.tags && post.tags.length) { %>
           <span class="archive-post-tags">
             <% post.tags.forEach(function(tag) { %>

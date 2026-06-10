@@ -1,17 +1,6 @@
 <%
-  // Get current language from page object
-  var currentLang = 'zh-CN';
-
-  if (typeof page !== 'undefined' && page && page.path && page.path.startsWith('en/')) {
-    currentLang = 'en';
-  }
-  // Check localStorage for browser environment
-  else if (typeof localStorage !== 'undefined' && typeof window !== 'undefined') {
-    var langFromStorage = localStorage.getItem('preferredLang');
-    if (langFromStorage === 'en' || langFromStorage === 'zh-CN') {
-      currentLang = 'en';
-    }
-  }
+  // Get current language from page.lang property (injected by multi_lang_generator)
+  var currentLang = page.lang || "zh-CN";
 
   // Get year and month from page if it's an archive page
   var archiveYear = page && page.year ? parseInt(page.year) : null;
@@ -49,17 +38,7 @@
 
   // Filter posts by language and date
   var filteredPosts = allPosts.filter(function(post) {
-    var postLang = post.lang;
-    if (!postLang) {
-      // Default language detection based on path
-      if (currentLang === 'en' && post.path && post.path.startsWith('en/')) {
-        postLang = 'en';
-      } else if (currentLang === 'zh-CN' && (!post.path || !post.path.startsWith('en/'))) {
-        postLang = 'zh-CN';
-      } else {
-        postLang = currentLang;
-      }
-    }
+    var postLang = post.lang || 'zh-CN';
     var langMatch = (postLang === currentLang);
 
     // Filter by date if on archive page

@@ -3,9 +3,12 @@
     <h3 class="widget-title"><%= __('tags') %></h3>
     <div class="widget tagcloud">
       <%
+        // Get current language from helper
+        var currentLang = page.lang || "zh-CN";
+
         // Filter tags and recalculate counts based on language
         var filteredTags = site.tags.toArray().filter(function(tag) {
-          if (page && page.path && page.path.startsWith('en/')) {
+          if (currentLang === 'en') {
             return !/[\u4e00-\u9fa5]/.test(tag.name);
           }
           return /[\u4e00-\u9fa5]/.test(tag.name);
@@ -14,7 +17,7 @@
         // Recalculate tag counts based on language
         filteredTags = filteredTags.map(function(tag) {
           var posts = tag.posts.toArray().filter(function(post) {
-            if (page && page.path && page.path.startsWith('en/')) {
+            if (currentLang === 'en') {
               return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
             }
             return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
@@ -44,7 +47,7 @@
             var ratio = (maxCount === minCount) ? 1 : (tag.length - minCount) / (maxCount - minCount);
             var fontSize = minFont + (maxFont - minFont) * ratio;
       %>
-            <a href="<%= localized_url_for(tag.path) %>" style="font-size: <%= fontSize %>px;"><%= tag.name %></a>
+            <a href="<%= url_for(tag.path) %>" style="font-size: <%= fontSize %>px;"><%= tag.name %></a>
       <%
            });
          }

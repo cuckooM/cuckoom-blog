@@ -1,8 +1,5 @@
 <%
-  var currentLang = 'zh-CN';
-  if (page && page.path && page.path.startsWith('en/')) {
-    currentLang = 'en';
-  }
+  var currentLang = page.lang || "zh-CN";
 %>
 
 <!-- Simplified Hero -->

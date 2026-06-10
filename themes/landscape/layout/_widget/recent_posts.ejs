@@ -1,15 +1,6 @@
 <%
-  // Get current language from pagePath parameter or page object
-  var currentLang = 'zh-CN';
-
-  // Check pagePath parameter first (passed from sidebar)
-  if (typeof pagePath !== 'undefined' && pagePath && pagePath.startsWith('en/')) {
-    currentLang = 'en';
-  }
-  // Check page object
-  else if (typeof page !== 'undefined' && page && page.path && page.path.startsWith('en/')) {
-    currentLang = 'en';
-  }
+  // Get current language from helper
+  var currentLang = page.lang || "zh-CN";
 %>
 <%
   // Get all posts from the site
@@ -35,7 +26,7 @@
       <ul>
         <% limitedPosts.forEach(function(post){ %>
           <li>
-            <a href="<%- url_for(post.path) %>"><%= post.title || '(no title)' %></a>
+            <a href="<%- post_url_i18n(post) %>"><%= post.title || '(no title)' %></a>
           </li>
         <% }) %>
       </ul>
