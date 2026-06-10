@@ -27,28 +27,29 @@ hexo.extend.filter.register('after_generate', function() {
   // 获取所有文章
   const posts = this.locals.get('posts');
   
-  // 找出需要移动的英文文章
-  const enPosts = posts.filter(post => post.lang === 'en');
+  // 找出需要移动的非默认语言文章（英文和韩文）
+  const nonDefaultPosts = posts.filter(post => post.lang && post.lang !== defaultLang);
   
-  if (enPosts.length === 0) {
-    log.info('[i18n_route] No English posts to relocate');
+  if (nonDefaultPosts.length === 0) {
+    log.info('[i18n_route] No non-default language posts to relocate');
     return;
   }
   
-  log.info(`[i18n_route] Found ${enPosts.length} English posts to relocate`);
+  log.info(`[i18n_route] Found ${nonDefaultPosts.length} non-default language posts to relocate`);
   
   // 收集要移动的路由
   const routesToMove = [];
   
-  enPosts.forEach(post => {
+  nonDefaultPosts.forEach(post => {
     // 原始路径（由默认 generator 生成到根路径）
     const originalPath = post.path;
     
     // 格式化后的路径（带 index.html）
     const formattedPath = route.format(originalPath);
     
-    // 新路径（带 /en/ 前缀）
-    const newPath = route.format('en/' + originalPath);
+    // 新路径（带语言前缀，如 /en/ 或 /ko/）
+    const langPrefix = post.lang + '/';
+    const newPath = route.format(langPrefix + originalPath);
     
     // 检查原始路由是否存在
     if (route.routes[formattedPath]) {
@@ -73,7 +74,7 @@ hexo.extend.filter.register('after_generate', function() {
     const routeData = route.routes[originalPath];
     
     if (routeData) {
-      // 创建新路由（在 /en/ 路径）
+      // 创建新路由（在语言前缀路径）
       route.set(newPath, {
         data: routeData.data,
         modified: routeData.modified
@@ -86,7 +87,7 @@ hexo.extend.filter.register('after_generate', function() {
     }
   });
   
-  log.info(`[i18n_route] Successfully relocated ${routesToMove.length} English posts to /en/`);
+  log.info(`[i18n_route] Successfully relocated ${routesToMove.length} non-default language posts`);
 });
 
 // 注册 helper 函数：根据当前语言过滤文章列表
