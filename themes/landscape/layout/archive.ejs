@@ -32,17 +32,22 @@
     archives[year][month].push(post);
   });
 
-  var monthNames = currentLang === 'en'
-    ? ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-    : ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+  var monthNames;
+  if (currentLang === 'en') {
+    monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  } else if (currentLang === 'ko') {
+    monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+  } else {
+    monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+  }
 
-  var pageTitle = currentLang === 'en' ? 'Archives' : '归档';
+  var pageTitle = currentLang === 'en' ? 'Archives' : currentLang === 'ko' ? '아카이브' : '归档';
   if (currentYear && currentMonth) {
     pageTitle = monthNames[currentMonth - 1] + ' ' + currentYear;
   } else if (currentYear) {
     pageTitle = currentYear;
   }
-  var pageDesc = currentLang === 'en' ? 'All posts organized by date' : '按日期排列的所有文章';
+  var pageDesc = currentLang === 'en' ? 'All posts organized by date' : currentLang === 'ko' ? '날짜별 정렬된 모든 글' : '按日期排列的所有文章';
 %>
 
 <!-- Simplified Hero -->
@@ -90,6 +95,8 @@
   <div class="archive-empty">
     <% if (currentLang === 'en') { %>
     <p>No posts yet.</p>
+    <% } else if (currentLang === 'ko') { %>
+    <p>아직 글이 없습니다.</p>
     <% } else { %>
     <p>暂无文章。</p>
     <% } %>

@@ -20,7 +20,7 @@
 <section class="hero-section hero-simple">
   <div class="hero-content">
     <h1 class="hero-title"><%= page.category %></h1>
-    <p class="hero-description"><%= filteredPosts.length %> <%= currentLang === 'en' ? 'posts' : '篇文章' %></p>
+    <p class="hero-description"><%= filteredPosts.length %> <%= currentLang === 'en' ? 'posts' : currentLang === 'ko' ? '개의 글' : '篇文章' %></p>
   </div>
 </section>
 
@@ -53,13 +53,13 @@
         </div>
         <% } %>
         <div class="card-read-more">
-          <a href="<%- post_url_i18n(post) %>"><%- currentLang === 'en' ? 'Read More &rarr;' : '阅读更多 &rarr;' %></a>
+          <a href="<%- post_url_i18n(post) %>"><%- currentLang === 'en' ? 'Read More &rarr;' : currentLang === 'ko' ? '더 읽기 &rarr;' : '阅读更多 &rarr;' %></a>
         </div>
       </article>
     <% }); %>
   <% } else { %>
     <div class="article-card">
-      <p><%= currentLang === 'en' ? 'No posts in this category.' : '暂无相关文章。' %></p>
+      <p><%= currentLang === 'en' ? 'No posts in this category.' : currentLang === 'ko' ? '이 카테고리에 글이 없습니다.' : '暂无相关文章。' %></p>
     </div>
   <% } %>
 </div>

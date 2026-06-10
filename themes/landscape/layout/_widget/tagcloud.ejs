@@ -9,7 +9,10 @@
         // Filter tags and recalculate counts based on language
         var filteredTags = site.tags.toArray().filter(function(tag) {
           if (currentLang === 'en') {
-            return !/[\u4e00-\u9fa5]/.test(tag.name);
+            return !/[\u4e00-\u9fa5]/.test(tag.name) && !/[\uac00-\ud7af]/.test(tag.name);
+          }
+          if (currentLang === 'ko') {
+            return /[\uac00-\ud7af]/.test(tag.name);
           }
           return /[\u4e00-\u9fa5]/.test(tag.name);
         });
@@ -20,7 +23,10 @@
             if (currentLang === 'en') {
               return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
             }
-            return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+            if (currentLang === 'ko') {
+              return post.lang === 'ko' || (post.path && post.path.startsWith('ko/'));
+            }
+            return post.lang !== 'en' && post.lang !== 'ko' && !(post.path && (post.path.startsWith('en/') || post.path.startsWith('ko/')));
           });
           return {
             name: tag.name,
