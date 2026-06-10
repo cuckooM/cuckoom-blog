@@ -1,0 +1,46 @@
+<!-- Mobile Navigation Drawer -->
+<%
+  var currentLang = page.lang || "zh-CN";
+  var menuTitle = currentLang === 'en' ? 'Menu' : currentLang === 'ko' ? '메뉴' : currentLang === 'ja' ? 'メニュー' : '菜单';
+  var closeText = currentLang === 'en' ? 'Close' : currentLang === 'ko' ? '닫기' : currentLang === 'ja' ? '閉じる' : '关闭';
+%>
+<div class="mobile-nav-drawer" id="mobile-nav-drawer">
+  <div class="mobile-nav-header">
+    <span class="mobile-nav-title"><%= menuTitle %></span>
+    <button class="mobile-nav-close" id="mobile-nav-close" aria-label="<%= closeText %>" title="<%= closeText %>">
+      <span class="fa fa-times"></span>
+    </button>
+  </div>
+  <nav class="mobile-nav-links">
+    <% if (config.theme_config && config.theme_config.menu) { %>
+      <% var menuData = config.theme_config.menu[currentLang] || config.theme_config.menu['zh-CN'] || config.theme_config.menu; %>
+      <% for (var i in menuData) { %>
+        <% if (typeof menuData[i] === 'string') { %>
+          <% var title = i; %>
+          <% var url = menuData[i]; %>
+          <% var isCurrent = false; %>
+          <%
+            if (url === '' && is_home()) {
+              isCurrent = true;
+            } else if (url === 'archives' && is_archive()) {
+              isCurrent = true;
+            } else if (url === 'categories' && (is_category() || page.type === 'categories')) {
+              isCurrent = true;
+            } else if (url === 'tags' && (is_tag() || page.type === 'tags')) {
+              isCurrent = true;
+            } else if (url === 'about' && page.path && page.path.indexOf('about') > -1) {
+              isCurrent = true;
+            }
+          %>
+          <a href="<%- url_with_lang(url, currentLang) %>" class="mobile-nav-item<% if (isCurrent) { %> active<% } %>">
+            <span class="nav-item-text"><%= title %></span>
+          </a>
+        <% } %>
+      <% } %>
+    <% } %>
+  </nav>
+  <div class="mobile-nav-footer">
+    <%- partial('_partial/language-switcher', {page: page, currentLang: currentLang}, {cache: false}) %>
+  </div>
+</div>
+<div class="mobile-nav-overlay" id="mobile-nav-overlay"></div>

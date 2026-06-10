@@ -15,8 +15,8 @@
       <%- partial('_partial/footer', null, {cache: !config.relative_link}) %>
     </div>
 
-    <!-- Mobile Navigation -->
-    <%- partial('_partial/mobile-nav', null, {cache: !config.relative_link}) %>
+    <!-- Mobile Navigation Drawer -->
+    <%- partial('_partial/mobile-nav-drawer', {page: page}, {cache: false}) %>
 
     <!-- Sidebar Drawer Overlay -->
     <div class="drawer-overlay"></div>

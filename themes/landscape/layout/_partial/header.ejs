@@ -172,6 +172,34 @@
     if (overlay) overlay.classList.remove('is-visible');
   }
 
+  // ============================================
+  // Mobile Navigation Drawer - SA Architecture P0
+  // ============================================
+  function toggleMobileNavDrawer() {
+    var drawer = document.getElementById('mobile-nav-drawer');
+    var overlay = document.getElementById('mobile-nav-overlay');
+    if (drawer && overlay) {
+      var isOpen = drawer.classList.contains('is-open');
+      if (isOpen) {
+        closeMobileNavDrawer();
+      } else {
+        // Close sidebar drawer first (mutual exclusion)
+        closeSidebarDrawer();
+        drawer.classList.add('is-open');
+        overlay.classList.add('is-visible');
+        document.body.classList.add('nav-drawer-open');
+      }
+    }
+  }
+
+  function closeMobileNavDrawer() {
+    var drawer = document.getElementById('mobile-nav-drawer');
+    var overlay = document.getElementById('mobile-nav-overlay');
+    if (drawer) drawer.classList.remove('is-open');
+    if (overlay) overlay.classList.remove('is-visible');
+    document.body.classList.remove('nav-drawer-open');
+  }
+
   $(document).ready(function() {
     // Language switcher dropdown toggle
     $('.lang-switcher-btn').on('click', function(e) {
@@ -274,5 +302,45 @@
         }
       }, { passive: true });
     }
+
+    // ============================================
+    // Mobile Navigation Drawer Event Bindings
+    // ============================================
+    // Mobile menu toggle button (hamburger)
+    $('#main-nav-toggle').on('click', function(e) {
+      e.preventDefault();
+      toggleMobileNavDrawer();
+    });
+
+    // Close button in mobile nav drawer
+    $('#mobile-nav-close').on('click', function() {
+      closeMobileNavDrawer();
+    });
+
+    // Overlay click to close mobile nav
+    $('#mobile-nav-overlay').on('click', function() {
+      closeMobileNavDrawer();
+    });
+
+    // Close mobile nav when a link inside is clicked
+    $('#mobile-nav-drawer .mobile-nav-item').on('click', function() {
+      closeMobileNavDrawer();
+    });
+
+    // ESC key handler - update to close both drawers
+    $(document).on('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeMobileNavDrawer();
+        closeSidebarDrawer();
+        $('#search-form-wrap').removeClass('on');
+      }
+    });
+
+    // Sidebar toggle - close mobile nav drawer when opening sidebar (mutual exclusion)
+    $('#sidebar-toggle').on('click', function(e) {
+      e.preventDefault();
+      closeMobileNavDrawer();  // Close mobile nav first
+      toggleSidebarDrawer();
+    });
   });
 </script>
