@@ -20,8 +20,16 @@
   }
 
   // 修复 og:url：英文文章需要 /en/ 前缀
+  // 注意：i18n generator 生成的分类/标签页面 page.path 已包含 /en/ 前缀，需避免重复
   if (page.lang && page.lang !== 'zh-CN' && page.path) {
-    ogUrl = config.url + '/' + page.lang.toLowerCase() + '/' + page.path;
+    var langPrefix = page.lang.toLowerCase() + '/';
+    if (page.path.indexOf(langPrefix) === 0) {
+      // 路径已包含语言前缀，直接使用
+      ogUrl = config.url + '/' + page.path;
+    } else {
+      // 路径不含语言前缀，需要添加
+      ogUrl = config.url + '/' + langPrefix + page.path;
+    }
   }
   %>
   <title><% if (title){ %><%= title %> | <% } %><%= config.title %></title>
