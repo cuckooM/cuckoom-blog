@@ -7,7 +7,10 @@
     if (currentLang === 'en') {
       return post.lang === 'en';
     }
-    return post.lang !== 'en';
+    if (currentLang === 'ko') {
+      return post.lang === 'ko';
+    }
+    return post.lang !== 'en' && post.lang !== 'ko';
   });
 
   // Check if we're on a specific year/month archive page

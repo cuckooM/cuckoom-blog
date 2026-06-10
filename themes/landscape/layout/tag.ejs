@@ -4,19 +4,24 @@
   // Get posts for this tag
   var allPosts = (locals && locals.posts ? locals.posts.toArray() : (site.posts ? site.posts.toArray() : []));
   var filteredPosts = allPosts.filter(function(post) {
-    var langMatch = (currentLang === 'en')
-      ? (post.lang === 'en')
-      : (post.lang !== 'en');
-    return langMatch && post.tags && post.tags.some(function(t) { return t.name === page.tag; });
-  });
-%>
+      var langMatch;
+      if (currentLang === 'en') {
+        langMatch = post.lang === 'en';
+      } else if (currentLang === 'ko') {
+        langMatch = post.lang === 'ko';
+      } else {
+        langMatch = post.lang !== 'en' && post.lang !== 'ko';
+      }
+      return langMatch && post.tags && post.tags.some(function(t) { return t.name === page.tag; });
+    });
+  %>
 
-<!-- Simplified Hero -->
-<section class="hero-section hero-simple">
-  <div class="hero-content">
-    <h1 class="hero-title">#<%= page.tag %></h1>
-    <p class="hero-description"><%= filteredPosts.length %> <%= currentLang === 'en' ? 'posts' : '篇文章' %></p>
-  </div>
+  <!-- Simplified Hero -->
+  <section class="hero-section hero-simple">
+    <div class="hero-content">
+      <p class="hero-description"><%= filteredPosts.length %> <%= currentLang === 'en' ? 'posts' : (currentLang === 'ko' ? '개의 글' : '篇文章') %></p>
+    </div>
+  </section>
 </section>
 
 <!-- Article Cards -->

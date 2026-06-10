@@ -4,9 +4,14 @@
   // Get posts for this category
   var allPosts = (locals && locals.posts ? locals.posts.toArray() : (site.posts ? site.posts.toArray() : []));
   var filteredPosts = allPosts.filter(function(post) {
-    var langMatch = (currentLang === 'en')
-      ? (post.lang === 'en')
-      : (post.lang !== 'en');
+    var langMatch;
+    if (currentLang === 'en') {
+      langMatch = post.lang === 'en';
+    } else if (currentLang === 'ko') {
+      langMatch = post.lang === 'ko';
+    } else {
+      langMatch = post.lang !== 'en' && post.lang !== 'ko';
+    }
     return langMatch && post.categories && post.categories.some(function(c) { return c.name === page.category; });
   });
 %>

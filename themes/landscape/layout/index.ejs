@@ -8,7 +8,11 @@
     if (currentLang === 'en') {
       return post.lang === 'en';
     }
-    return post.lang !== 'en';
+    if (currentLang === 'ko') {
+      return post.lang === 'ko';
+    }
+    // 中文页面：只显示中文文章（非英文、非韩文）
+    return post.lang !== 'en' && post.lang !== 'ko';
   });
   // Sort by date descending (newest first)
   var posts = filteredPosts.sort(function(a, b) {
@@ -25,6 +29,8 @@
     <% } %>
     <% if (currentLang === 'zh-CN') { %>
     <p class="hero-description">一个关于编程、技术和生活的个人博客</p>
+    <% } else if (currentLang === 'ko') { %>
+    <p class="hero-description">프로그래밍, 기술, 그리고 생활에 대한 개인 블로그</p>
     <% } else { %>
     <p class="hero-description">A personal blog about coding, technology & life</p>
     <% } %>
