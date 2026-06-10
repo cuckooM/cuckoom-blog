@@ -190,3 +190,4 @@ theme_config:
 search:
   path: search.xml
   field: post
+  template: templates/search.xml
