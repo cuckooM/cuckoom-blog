@@ -1,7 +1,10 @@
 <header id="header" class="site-header">
   <div class="header-inner outer">
     <!-- Logo / Site Title -->
-    <a href="<%- url_for() %>" class="header-logo">
+    <%
+      var headerLang = page.lang || "zh-CN";
+    %>
+    <a href="<%- url_with_lang('', headerLang) %>" class="header-logo">
       <span class="logo-text"><%= config.title %></span>
     </a>
 
