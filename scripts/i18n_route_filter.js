@@ -1,0 +1,125 @@
+/**
+ * 多语言路由重写器
+ * 
+ * 方案：使用 after_generate Filter Hook 重写路由
+ * 
+ * 流程：
+ * 1. 默认 post generator 生成所有文章到根路径
+ * 2. after_generate filter 在路由构建完成后执行
+ * 3. 识别英文文章，移动其路由到 /en/ 路径，删除根路径路由
+ * 
+ * 符合 Hexo 最佳实践：使用 Filter Hook 而非覆盖 Generator
+ */
+
+'use strict';
+
+hexo.extend.filter.register('after_generate', function() {
+  const config = this.config;
+  const route = this.route;
+  const log = this.log || console;
+  
+  // 获取语言配置
+  const languages = (config.language && Array.isArray(config.language)) 
+    ? config.language 
+    : [config.language || 'zh-CN'];
+  const defaultLang = languages[0];
+  
+  // 获取所有文章
+  const posts = this.locals.get('posts');
+  
+  // 找出需要移动的英文文章
+  const enPosts = posts.filter(post => post.lang === 'en');
+  
+  if (enPosts.length === 0) {
+    log.info('[i18n_route] No English posts to relocate');
+    return;
+  }
+  
+  log.info(`[i18n_route] Found ${enPosts.length} English posts to relocate`);
+  
+  // 收集要移动的路由
+  const routesToMove = [];
+  
+  enPosts.forEach(post => {
+    // 原始路径（由默认 generator 生成到根路径）
+    const originalPath = post.path;
+    
+    // 格式化后的路径（带 index.html）
+    const formattedPath = route.format(originalPath);
+    
+    // 新路径（带 /en/ 前缀）
+    const newPath = route.format('en/' + originalPath);
+    
+    // 检查原始路由是否存在
+    if (route.routes[formattedPath]) {
+      routesToMove.push({
+        originalPath: formattedPath,
+        newPath,
+        post
+      });
+    }
+  });
+  
+  if (routesToMove.length === 0) {
+    log.info('[i18n_route] No routes found to relocate (maybe already moved)');
+    return;
+  }
+  
+  log.info(`[i18n_route] Moving ${routesToMove.length} routes...`);
+  
+  // 移动路由
+  routesToMove.forEach(({ originalPath, newPath }) => {
+    // 获取原始路由数据
+    const routeData = route.routes[originalPath];
+    
+    if (routeData) {
+      // 创建新路由（在 /en/ 路径）
+      route.set(newPath, {
+        data: routeData.data,
+        modified: routeData.modified
+      });
+      
+      // 删除旧路由（在根路径）
+      route.remove(originalPath);
+      
+      log.debug(`[i18n_route] Moved: ${originalPath} → ${newPath}`);
+    }
+  });
+  
+  log.info(`[i18n_route] Successfully relocated ${routesToMove.length} English posts to /en/`);
+});
+
+// 注册 helper 函数：根据当前语言过滤文章列表
+hexo.extend.helper.register('filter_posts_by_lang', function(posts, currentLang) {
+  const languages = this.config.language;
+  const defaultLang = (Array.isArray(languages) ? languages[0] : languages) || 'zh-CN';
+  return posts.filter(post => {
+    const postLang = post.lang || defaultLang;
+    return postLang === currentLang;
+  });
+});
+
+// 注册 helper 函数：生成带语言前缀的 URL
+hexo.extend.helper.register('url_with_lang', function(path, currentLang) {
+  const languages = this.config.language;
+  const defaultLang = (Array.isArray(languages) ? languages[0] : languages) || 'zh-CN';
+  if (currentLang === defaultLang) {
+    return this.url_for(path);
+  }
+  return this.url_for(currentLang + '/' + path);
+});
+
+// 注册 helper 函数：获取文章的正确 URL（考虑语言前缀）
+hexo.extend.helper.register('post_url_i18n', function(post) {
+  const languages = this.config.language;
+  const defaultLang = (Array.isArray(languages) ? languages[0] : languages) || 'zh-CN';
+  const postLang = post.lang || defaultLang;
+  
+  // 英文文章：URL 带 /en/ 前缀
+  if (postLang !== defaultLang) {
+    return this.url_for(postLang + '/' + post.path);
+  }
+  
+  // 默认语言文章：URL 无前缀
+  return this.url_for(post.path);
+});
