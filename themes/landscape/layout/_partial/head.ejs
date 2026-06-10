@@ -3,6 +3,7 @@
   <%- partial('google-analytics') %>
   <%
   var title = page.title;
+  var ogUrl = page.permalink || page.path;
 
   if (is_archive()){
     title = __('archive_a');
@@ -17,10 +18,15 @@
   } else if (is_tag()){
     title = __('tag') + ': ' + page.tag;
   }
+
+  // 修复 og:url：英文文章需要 /en/ 前缀
+  if (page.lang && page.lang !== 'zh-CN' && page.path) {
+    ogUrl = config.url + '/' + page.lang.toLowerCase() + '/' + page.path;
+  }
   %>
   <title><% if (title){ %><%= title %> | <% } %><%= config.title %></title>
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-  <%- open_graph({twitter_id: theme.twitter, fb_admins: theme.fb_admins, fb_app_id: theme.fb_app_id}) %>
+  <%- open_graph({twitter_id: theme.twitter, fb_admins: theme.fb_admins, fb_app_id: theme.fb_app_id, url: ogUrl}) %>
   <% if (config.feed) { %>
     <%- feed_tag() %>
   <% } else if (theme.rss) { %>
