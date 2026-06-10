@@ -17,33 +17,33 @@ keywords: PostgreSQL,SSL,양방향 인증,Spring Boot,데이터베이스 보안
 
 ## 인증서 생성
 
-### 1. 서버侧生成三个文件
+### 1. 서버 측 세 개 파일 생성
 
-- `root.crt` (可信根证书)
-- `server.crt` (服务器证书)
-- `server.key` (私钥)
+- `root.crt` (신뢰할 수 있는 루트 인증서)
+- `server.crt` (서버 인증서)
+- `server.key` (개인 키)
 
 <!-- more -->
 
-#### 生成私钥（需要设置密码）
+#### 개인 키 생성 (비밀번호 설정 필요)
 
 ```bash
 openssl genrsa -des3 -out server.key 2048
 ```
 
-#### 移除密码（需要输入上一步设置的密码）
+#### 비밀번호 제거 (이전 단계에서 설정한 비밀번호 입력 필요)
 
 ```bash
 openssl rsa -in server.key -out server.key
 ```
 
-#### 创建服务器证书
+#### 서버 인증서 생성
 
 ```bash
 openssl req -new -key server.key -days 3650 -out server.crt -x509
 ```
 
-执行过程中需要输入以下信息：
+실행 과정에서 다음 정보 입력:
 
 ```
 Country Name (2 letter code) [AU]:CN
@@ -55,9 +55,9 @@ Common Name (e.g. server FQDN or YOUR name) []:127.0.0.1
 Email Address []:
 ```
 
-> 注意："Common Name" 应该写为服务器的 IP 地址或域名。
+> 주의: "Common Name"은 서버의 IP 주소 또는 도메인 이름으로 입력해야 합니다.
 
-#### 由于是自签名，服务器证书可作为可信根证书
+#### 자체 서명이므로 서버 인증서를 신뢰할 수 있는 루트 인증서로 사용
 
 ```bash
 cp server.crt root.crt
@@ -65,31 +65,31 @@ cp server.crt root.crt
 
 ---
 
-### 2. 客户端生成三个文件
+### 2. 클라이언트 세 개 파일 생성
 
-- `root.crt` (可信根证书，已在服务器端生成)
-- `client.crt` (客户端证书)
-- `client.key` (私钥)
+- `root.crt` (신뢰할 수 있는 루트 인증서, 서버 측에서 이미 생성)
+- `client.crt` (클라이언트 인증서)
+- `client.key` (개인 키)
 
-#### 生成私钥（需要设置密码）
+#### 개인 키 생성 (비밀번호 설정 필요)
 
 ```bash
 openssl genrsa -des3 -out client.key 2048
 ```
 
-#### 移除密码（需要输入上一步设置的密码）
+#### 비밀번호 제거 (이전 단계에서 설정한 비밀번호 입력 필요)
 
 ```bash
 openssl rsa -in client.key -out client.key
 ```
 
-#### 创建客户端证书
+#### 클라이언트 인증서 생성
 
 ```bash
 openssl req -new -key client.key -out client.csr
 ```
 
-执行过程中需要输入以下信息：
+실행 과정에서 다음 정보 입력:
 
 ```
 Country Name (2 letter code) [AU]:CN
@@ -101,9 +101,9 @@ Common Name (e.g. server FQDN or YOUR name) []:blog
 Email Address []:
 ```
 
-> 注意："Common Name" 应该设置为要连接的数据库用户名。
+> 주의: "Common Name"은 연결할 데이터베이스 사용자 이름으로 설정해야 합니다.
 
-#### 转换格式。将 PEM 格式的密钥转换为 DER 格式。
+#### 형식 변환. PEM 형식 키를 DER 형식으로 변환.
 
 ```bash
 openssl pkcs8 -topk8 -inform PEM -in client.key -outform DER -nocrypt -out client.pk8
@@ -111,9 +111,9 @@ openssl pkcs8 -topk8 -inform PEM -in client.key -outform DER -nocrypt -out clien
 
 ---
 
-### 3. 文件总结
+### 3. 파일 요약
 
-完成上述步骤后，我们为服务器和客户端生成了以下文件：
+위 단계 완료 후 서버와 클라이언트에 대해 다음 파일을 생성했습니다:
 
 - `client.crt`
 - `client.csr`
@@ -129,7 +129,7 @@ openssl pkcs8 -topk8 -inform PEM -in client.key -outform DER -nocrypt -out clien
 
 ### 1. pg_hba.conf
 
-添加以下内容：
+다음 내용 추가:
 
 ```
 hostssl   all             all             0.0.0.0/0               cert
@@ -138,7 +138,7 @@ hostssl   all             all             ::1/128                 cert
 
 ### 2. postgresql.conf
 
-修改以下配置：
+다음 구성 수정:
 
 ```
 ssl = on
@@ -166,10 +166,10 @@ spring:
 
 ## 구성 검증
 
-连接成功后，可以使用以下 SQL 验证 SSL 连接：
+연결 성공 후 다음 SQL로 SSL 연결 검증:
 
 ```sql
 SELECT * FROM pg_stat_ssl;
 ```
 
-如果连接使用了 SSL，将显示相应的 SSL 信息。
+연결이 SSL을 사용한 경우 해당 SSL 정보가 표시됩니다.

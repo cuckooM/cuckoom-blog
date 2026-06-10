@@ -11,24 +11,24 @@ tags:
   - 성능 최적화
 ---
 
-PostgreSQL 的 Foreign Table 是一个强大的功能，让我们可以像操作本地表一样查询远程数据源。但在实际使用中，特别是涉及 LEFT JOIN 关联 Foreign Table 主键时，性能问题往往让人头疼。本文将深入剖析 Foreign Table 的原理，并提供系统性的性能优化方案。
+PostgreSQL의 Foreign Table은 강력한 기능으로, 로컬 테이블처럼 원격 데이터 소스를 쿼리할 수 있습니다. 하지만 실제 사용 중, 특히 LEFT JOIN으로 Foreign Table의 Primary Key를 연결할 때 성능 문제가 발생하기 쉽습니다. 이 글에서는 Foreign Table의 원리를 깊이 분석하고 체계적인 성능 최적화 방안을 제공합니다.
 
 <!-- more -->
 
-## Foreign Table 工作原理
+## Foreign Table 작동 원리
 
-要优化 Foreign Table，首先需要理解它的工作机制。Foreign Table 基于 **Foreign Data Wrapper (FDW)** 架构实现，整个查询过程可以分为几个阶段：
+Foreign Table을 최적화하기 위해 먼저 작동 메커니즘을 이해해야 합니다. Foreign Table은 **Foreign Data Wrapper (FDW)** 아키텍처 기반으로 구현되며, 쿼리 과정은 여러 단계로 나뉩니다:
 
-### 架构层次
+### 아키텍처 레이어
 
 ```
 ┌─────────────────────────────────────┐
-│  SQL 查询 (SELECT * FROM foreign_tbl) │
+│  SQL 쿼리 (SELECT * FROM foreign_tbl) │
 └─────────────────┬───────────────────┘
                   ▼
 ┌─────────────────────────────────────┐
-│  PostgreSQL 查询优化器               │
-│  (生成查询计划，下推条件)              │
+│  PostgreSQL 쿼리 옵티마이저               │
+│  (쿼리 계획 생성, 조건 푸시다운)              │
 └─────────────────┬───────────────────┘
                   ▼
 ┌─────────────────────────────────────┐
@@ -37,33 +37,33 @@ PostgreSQL 的 Foreign Table 是一个强大的功能，让我们可以像操作
 └─────────────────┬───────────────────┘
                   ▼
 ┌─────────────────────────────────────┐
-│  外部数据源 (远程PG/MySQL/文件/API)    │
+│  외부 데이터 소스 (원격PG/MySQL/파일/API)    │
 └─────────────────────────────────────┘
 ```
 
-### 核心组件
+### 핵심 컴포넌트
 
-一个完整的 Foreign Table 配置包含三个核心组件：
+완전한 Foreign Table 구성은 세 가지 핵심 컴포넌트를 포함합니다:
 
-1. **Foreign Server** — 定义外部数据源的连接信息
-2. **User Mapping** — 本地用户到远程用户的认证映射
-3. **Foreign Table** — 本地表结构定义，映射到远程对象
+1. **Foreign Server** — 외부 데이터 소스의 연결 정보 정의
+2. **User Mapping** — 로컬 사용자에서 원격 사용자로의 인증 매핑
+3. **Foreign Table** — 로컬 테이블 구조 정의, 원격 객체로 매핑
 
 ```sql
--- 1. 创建扩展
+-- 1. 확장 생성
 CREATE EXTENSION postgres_fdw;
 
--- 2. 定义外部服务器
+-- 2. 외부 서버 정의
 CREATE SERVER remote_db 
   FOREIGN DATA WRAPPER postgres_fdw 
   OPTIONS (host '192.168.1.100', dbname 'remote', port '5432');
 
--- 3. 用户映射
+-- 3. 사용자 매핑
 CREATE USER MAPPING FOR current_user 
   SERVER remote_db 
   OPTIONS (user 'remote_user', password 'xxx');
 
--- 4. 定义外部表
+-- 4. 외부 테이블 정의
 CREATE FOREIGN TABLE foreign_users (
   id int,
   name text,
@@ -72,109 +72,109 @@ CREATE FOREIGN TABLE foreign_users (
   OPTIONS (table_name 'users');
 ```
 
-### 查询执行流程
+### 쿼리 실행 흐름
 
-当执行一个查询时，PostgreSQL 会经历以下步骤：
+쿼리 실행 시 PostgreSQL은 다음 단계를 거칩니다:
 
-**1. 查询规划阶段**
+**1. 쿼리 계획 단계**
 
-优化器识别出查询涉及 Foreign Table，调用 FDW 的 `PlanForeignScan` 回调函数。这个阶段会决定哪些查询条件可以"下推"到远程执行。
+옵티마이저가 쿼리에 Foreign Table이 포함됨을 인식하고 FDW의 `PlanForeignScan` 콜백 함수를 호출합니다. 이 단계에서 어떤 쿼리 조건을 원격으로 "푸시다운"할지 결정합니다.
 
-**2. 条件下推（Pushdown）**
+**2. 조건 푸시다운(Pushdown)**
 
-这是性能优化的关键点。如果 WHERE 条件可以在远程执行，就能大幅减少网络传输的数据量：
+이것은 성능 최적화의 핵심입니다. WHERE 조건이 원격에서 실행되면 네트워크 전송 데이터량을 크게 줄일 수 있습니다:
 
 ```sql
--- 这个查询会把 WHERE 条件推到远程执行
+-- 이 쿼리는 WHERE 조건을 원격으로 푸시
 SELECT * FROM foreign_users WHERE id > 100;
 
--- FDW 会生成类似这样的远程查询：
+-- FDW가 생성하는 원격 쿼리:
 -- SELECT id, name, status FROM users WHERE id > 100
 ```
 
-目前可以下推的内容包括：
-- WHERE 条件
-- JOIN 操作（部分 FDW 支持，postgres_fdw 15+ 支持）
-- 聚合函数（SUM, COUNT, AVG 等）
-- 排序和 LIMIT
+현재 푸시다운 가능한 내용:
+- WHERE 조건
+- JOIN 작업 (일부 FDW 지원, postgres_fdw 15+ 지원)
+- 집계 함수 (SUM, COUNT, AVG 등)
+- 정렬과 LIMIT
 
-**3. 执行阶段**
+**3. 실행 단계**
 
-- `BeginForeignScan`：建立到远程数据库的连接
-- `IterateForeignScan`：迭代获取数据行
-- `EndForeignScan`：释放连接资源
+- `BeginForeignScan`: 원격 데이터베이스 연결 설정
+- `IterateForeignScan`: 데이터 행 반복 조회
+- `EndForeignScan`: 연결 리소스 해제
 
-## 性能优化策略
+## 성능 최적화 전략
 
-### 1. 导入统计信息
+### 1. 통계 정보 가져오기
 
-最有效的优化是让优化器了解 Foreign Table 的统计信息：
+가장 효과적인 최적화는 옵티마이저가 Foreign Table의 통계 정보를 알게 하는 것입니다:
 
 ```sql
--- 让 FDW 查询远程表的统计信息
+-- FDW가 원격 테이블의 통계 정보를 쿼리
 ALTER FOREIGN TABLE foreign_users 
   OPTIONS (use_remote_estimate 'true');
 ```
 
-`use_remote_estimate` 会让 postgres_fdw 在规划阶段查询远程表的统计信息（行数、唯一值数量等），从而生成更优的执行计划。
+`use_remote_estimate`는 postgres_fdw가 계획 단계에서 원격 테이블의 통계 정보(행 수, 유니크 값 수 등)를 쿼리하여 더 나은 실행 계획을 생성합니다.
 
-### 2. 优化批量获取
+### 2. 배치 조회 최적화
 
-postgres_fdw 默认每次从远程获取 100 行。增大这个值可以减少网络往返次数：
+postgres_fdw는 기본적으로 원격에서 100행을 가져옵니다. 이 값을 늘리면 네트워크 라운드트립 수를 줄일 수 있습니다:
 
 ```sql
--- 服务器级别设置
+-- 서버 레벨 설정
 ALTER SERVER remote_db 
   OPTIONS (SET fetch_size '10000');
 
--- 单表级别设置（优先级更高）
+-- 단일 테이블 레벨 설정 (우선순위 더 높음)
 ALTER FOREIGN TABLE foreign_users 
   OPTIONS (SET fetch_size '5000');
 ```
 
-### 3. 索引策略
+### 3. 인덱스 전략
 
-**远程表必须有索引**：
+**원격 테이블에 인덱스 필요**:
 
 ```sql
--- 在远程数据库上创建
+-- 원격 데이터베이스에서 생성
 CREATE INDEX idx_users_id ON users(id);
 CREATE INDEX idx_users_status ON users(status);
 CREATE INDEX idx_users_id_status ON users(id, status);
 ```
 
-**本地表的关联键也要索引**：
+**로컬 테이블의 연결 키도 인덱스 필요**:
 
 ```sql
--- 在本地数据库创建
+-- 로컬 데이터베이스에서 생성
 CREATE INDEX idx_local_foreign_id ON local_table(foreign_id);
 ```
 
-## 性能对比实例
+## 성능 비교 예시
 
-以一个真实场景为例：10万行本地表 LEFT JOIN 100万行远程表。
+실제 시나리오로: 10만행 로컬 테이블 LEFT JOIN 100만행 원격 테이블.
 
-### 优化前
+### 최적화 전
 
 ```sql
--- 默认配置，无统计信息
+-- 기본 설정, 통계 정보 없음
 EXPLAIN ANALYZE 
 SELECT l.*, r.name 
 FROM local_table l 
 LEFT JOIN foreign_table r ON l.foreign_id = r.id;
 
--- 执行时间：45秒
--- 原因：全表拉取，嵌套循环 JOIN
+-- 실행 시간: 45초
+-- 원인: 전체 테이블 가져오기, Nested Loop JOIN
 ```
 
-### 优化后
+### 최적화 후
 
 ```sql
--- 优化配置
+-- 최적화 설정
 ALTER SERVER remote_db OPTIONS (SET fetch_size '10000');
 ALTER FOREIGN TABLE foreign_table OPTIONS (use_remote_estimate 'true');
 
--- 在远程创建索引
+-- 원격에서 인덱스 생성
 CREATE INDEX idx_ft_id ON remote_table(id);
 
 EXPLAIN ANALYZE 
@@ -182,19 +182,19 @@ SELECT l.*, r.name
 FROM local_table l 
 LEFT JOIN foreign_table r ON l.foreign_id = r.id;
 
--- 执行时间：3秒
--- 提升 15 倍
+-- 실행 시간: 3초
+-- 15배 향상
 ```
 
-## 总结
+## 요약
 
-Foreign Table 性能优化的核心思想是**让计算下推到数据源**，减少网络传输和本地计算。最有效的优化通常是：
+Foreign Table 성능 최적화의 핵심 원칙은 **계산을 데이터 소스로 푸시다운**하여 네트워크 전송과 로컬 계산을 줄이는 것입니다. 가장 효과적인 최적화는:
 
-1. **增大 fetch_size** — 减少网络往返
-2. **开启 use_remote_estimate** — 让优化器做更好的决策
-3. **确保远程索引** — 加速远程查询
-4. **条件下推** — 让过滤在远程执行
+1. **fetch_size 증가** — 네트워크 라운드트립 감소
+2. **use_remote_estimate 활성화** — 옵티마이저가 더 나은 결정
+3. **원격 인덱스 확보** — 원격 쿼리 가속화
+4. **조건 푸시다운** — 필터가 원격에서 실행
 
-对于数据变化不频繁的场景，物化视图是最简单高效的方案。对于时间序列数据，分区表 + Foreign Table 可以实现冷热分离，兼顾查询性能和存储成本。
+데이터 변화가 적은 시나리오에서 Materialized View가 가장 단순하고 효과적인 방안입니다. 시계열 데이터의 경우 Partitioned Table + Foreign Table으로 Cold/Hot 분리를 구현하여 쿼리 성능과 저장 비용을 모두 고려할 수 있습니다.
 
-掌握这些技巧，Foreign Table 就能成为数据联邦架构中的利器，而非性能瓶颈。
+이 기술을 숙지하면 Foreign Table이 데이터 Federation 아키텍처의 강력한 도구가 되고, 성능 병목이 되지 않습니다.
