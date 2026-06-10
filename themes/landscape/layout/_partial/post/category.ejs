@@ -1,4 +1,5 @@
 <% if (post.categories && Array.isArray(post.categories) && post.categories.length){ %>
+  <% var currentLang = page.lang || post.lang || 'zh-CN'; %>
   <div class="article-category">
     <%
       post.categories.forEach(function(cat, i) {
@@ -9,7 +10,7 @@
     <ul class="article-category-list">
       <% post.categories.forEach(function(cat){ %>
         <li class="article-category-list-item">
-          <a class="article-category-list-link" href="<%- url_for('/categories/' + cat.toLowerCase() + '/') %>">
+          <a class="article-category-list-link" href="<%- url_with_lang('/categories/' + cat.toLowerCase() + '/', currentLang) %>">
             <%= cat %>
           </a>
         </li>
