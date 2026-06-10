@@ -11,8 +11,11 @@
     if (currentLang === 'ko') {
       return post.lang === 'ko';
     }
-    // 中文页面：只显示中文文章（非英文、非韩文）
-    return post.lang !== 'en' && post.lang !== 'ko';
+    if (currentLang === 'ja') {
+      return post.lang === 'ja';
+    }
+    // 中文页面：只显示中文文章（非英文、非韩文、非日文）
+    return post.lang !== 'en' && post.lang !== 'ko' && post.lang !== 'ja';
   });
   // Sort by date descending (newest first)
   var posts = filteredPosts.sort(function(a, b) {
@@ -31,6 +34,8 @@
     <p class="hero-description">一个关于编程、技术和生活的个人博客</p>
     <% } else if (currentLang === 'ko') { %>
     <p class="hero-description">프로그래밍, 기술, 그리고 생활에 대한 개인 블로그</p>
+    <% } else if (currentLang === 'ja') { %>
+    <p class="hero-description">プログラミング、技術、そして生活についての個人ブログ</p>
     <% } else { %>
     <p class="hero-description">A personal blog about coding, technology & life</p>
     <% } %>
@@ -79,7 +84,7 @@
 
         <!-- Read More -->
         <div class="card-read-more">
-          <a href="<%- post_url_i18n(post) %>"><%- currentLang === 'en' ? 'Read More &rarr;' : currentLang === 'ko' ? '더 읽기 &rarr;' : '阅读更多 &rarr;' %></a>
+          <a href="<%- post_url_i18n(post) %>"><%- currentLang === 'en' ? 'Read More &rarr;' : currentLang === 'ko' ? '더 읽기 &rarr;' : currentLang === 'ja' ? '続きを読む &rarr;' : '阅读更多 &rarr;' %></a>
         </div>
       </article>
     <% }); %>
@@ -89,6 +94,8 @@
       <p>No posts yet. Check back soon!</p>
       <% } else if (currentLang === 'ko') { %>
       <p>아직 게시물이 없습니다. 곧 새로운 글이 올라옵니다!</p>
+      <% } else if (currentLang === 'ja') { %>
+      <p>まだ記事がありません。お楽しみに！</p>
       <% } else { %>
       <p>暂无文章，敬请期待！</p>
       <% } %>
@@ -106,8 +113,8 @@
 <% if (actualTotalPages > 1 && page.current <= actualTotalPages) { %>
 <nav class="pagination">
   <%- paginator({
-    prev_text: '&laquo; ' + (currentLang === 'en' ? 'Prev' : currentLang === 'ko' ? '이전' : '上一页'),
-    next_text: (currentLang === 'en' ? 'Next' : currentLang === 'ko' ? '다음' : '下一页') + ' &raquo;',
+    prev_text: '&laquo; ' + (currentLang === 'en' ? 'Prev' : currentLang === 'ko' ? '이전' : currentLang === 'ja' ? '前へ' : '上一页'),
+    next_text: (currentLang === 'en' ? 'Next' : currentLang === 'ko' ? '다음' : currentLang === 'ja' ? '次へ' : '下一页') + ' &raquo;',
     total: actualTotalPages,
     escape: false
   }) %>

@@ -41,13 +41,13 @@
 <nav class="post-navigation">
   <% if (nav.prev) { %>
   <a href="<%- post_url_i18n(nav.prev) %>" class="post-nav-item post-nav-prev">
-    <span class="post-nav-label">&larr; <%= currentLang === 'en' ? 'Previous' : currentLang === 'ko' ? '이전 글' : '上一篇' %></span>
+    <span class="post-nav-label">&larr; <%= currentLang === 'en' ? 'Previous' : currentLang === 'ko' ? '이전 글' : currentLang === 'ja' ? '前の記事' : '上一篇' %></span>
     <span class="post-nav-title"><%= nav.prev.title %></span>
   </a>
   <% } %>
   <% if (nav.next) { %>
   <a href="<%- post_url_i18n(nav.next) %>" class="post-nav-item post-nav-next">
-    <span class="post-nav-label"><%= currentLang === 'en' ? 'Next' : currentLang === 'ko' ? '다음 글' : '下一篇' %> &rarr;</span>
+    <span class="post-nav-label"><%= currentLang === 'en' ? 'Next' : currentLang === 'ko' ? '다음 글' : currentLang === 'ja' ? '次の記事' : '下一篇' %> &rarr;</span>
     <span class="post-nav-title"><%= nav.next.title %></span>
   </a>
   <% } %>

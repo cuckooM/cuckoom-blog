@@ -1,8 +1,8 @@
 <%
   var currentLang = page.lang || "zh-CN";
 
-  var pageTitle = currentLang === 'en' ? 'Categories' : currentLang === 'ko' ? '카테고리' : '分类';
-  var pageDesc = currentLang === 'en' ? 'Browse posts by category' : currentLang === 'ko' ? '카테고리별로 글 찾아보기' : '按分类浏览文章';
+  var pageTitle = currentLang === 'en' ? 'Categories' : currentLang === 'ko' ? '카테고리' : currentLang === 'ja' ? 'カテゴリー' : '分类';
+  var pageDesc = currentLang === 'en' ? 'Browse posts by category' : currentLang === 'ko' ? '카테고리별로 글 찾아보기' : currentLang === 'ja' ? 'カテゴリーで記事を探す' : '按分类浏览文章';
 %>
 
 <!-- Simplified Hero -->
@@ -20,10 +20,13 @@
       // Filter categories by language (based on category name)
       var categories = site.categories.toArray().filter(function(cat) {
         if (currentLang === 'en') {
-          return !/[\u4e00-\u9fa5]/.test(cat.name) && !/[\uac00-\ud7af]/.test(cat.name);
+          return !/[\u4e00-\u9fa5]/.test(cat.name) && !/[\uac00-\ud7af]/.test(cat.name) && !/[\u3040-\u30ff]/.test(cat.name);
         }
         if (currentLang === 'ko') {
           return /[\uac00-\ud7af]/.test(cat.name) || !/[\u4e00-\u9fa5]/.test(cat.name);
+        }
+        if (currentLang === 'ja') {
+          return /[\u3040-\u30ff]/.test(cat.name) || !/[\u4e00-\u9fa5]/.test(cat.name);
         }
         return /[\u4e00-\u9fa5]/.test(cat.name);
       });
@@ -37,7 +40,10 @@
           if (currentLang === 'ko') {
             return post.lang === 'ko';
           }
-          return post.lang !== 'en' && post.lang !== 'ko';
+          if (currentLang === 'ja') {
+            return post.lang === 'ja';
+          }
+          return post.lang !== 'en' && post.lang !== 'ko' && post.lang !== 'ja';
         });
         return {
           name: cat.name,
@@ -58,7 +64,7 @@
       <div class="category-card-icon">📚</div>
       <h3 class="category-card-name"><%= cat.name %></h3>
       <p class="category-card-count">
-        <%= cat.length %> <%= currentLang === 'en' ? 'posts' : currentLang === 'ko' ? '개의 글' : '篇文章' %>
+        <%= cat.length %> <%= currentLang === 'en' ? 'posts' : currentLang === 'ko' ? '개의 글' : currentLang === 'ja' ? '記事' : '篇文章' %>
       </p>
     </a>
     <% }); %>
@@ -68,6 +74,8 @@
       <p>No categories yet.</p>
       <% } else if (currentLang === 'ko') { %>
       <p>아직 카테고리가 없습니다.</p>
+      <% } else if (currentLang === 'ja') { %>
+      <p>まだカテゴリーがありません。</p>
       <% } else { %>
       <p>暂无分类。</p>
       <% } %>

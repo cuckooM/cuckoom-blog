@@ -1,8 +1,8 @@
 <%
   var currentLang = page.lang || "zh-CN";
 
-  var pageTitle = currentLang === 'en' ? 'Tags' : currentLang === 'ko' ? '태그' : '标签';
-  var pageDesc = currentLang === 'en' ? 'Browse posts by tag' : currentLang === 'ko' ? '태그별로 글 찾아보기' : '按标签浏览文章';
+  var pageTitle = currentLang === 'en' ? 'Tags' : currentLang === 'ko' ? '태그' : currentLang === 'ja' ? 'タグ' : '标签';
+  var pageDesc = currentLang === 'en' ? 'Browse posts by tag' : currentLang === 'ko' ? '태그별로 글 찾아보기' : currentLang === 'ja' ? 'タグで記事を探す' : '按标签浏览文章';
 %>
 
 <!-- Simplified Hero -->
@@ -20,10 +20,13 @@
       // Filter tags by language (based on tag name)
       var tags = site.tags.toArray().filter(function(tag) {
         if (currentLang === 'en') {
-          return !/[\u4e00-\u9fa5]/.test(tag.name) && !/[\uac00-\ud7af]/.test(tag.name);
+          return !/[\u4e00-\u9fa5]/.test(tag.name) && !/[\uac00-\ud7af]/.test(tag.name) && !/[\u3040-\u30ff]/.test(tag.name);
         }
         if (currentLang === 'ko') {
           return /[\uac00-\ud7af]/.test(tag.name) || !/[\u4e00-\u9fa5]/.test(tag.name);
+        }
+        if (currentLang === 'ja') {
+          return /[\u3040-\u30ff]/.test(tag.name) || !/[\u4e00-\u9fa5]/.test(tag.name);
         }
         return /[\u4e00-\u9fa5]/.test(tag.name);
       });
@@ -37,7 +40,10 @@
           if (currentLang === 'ko') {
             return post.lang === 'ko';
           }
-          return post.lang !== 'en' && post.lang !== 'ko';
+          if (currentLang === 'ja') {
+            return post.lang === 'ja';
+          }
+          return post.lang !== 'en' && post.lang !== 'ko' && post.lang !== 'ja';
         });
         return {
           name: tag.name,
@@ -84,6 +90,8 @@
       <p>No tags yet.</p>
       <% } else if (currentLang === 'ko') { %>
       <p>아직 태그가 없습니다.</p>
+      <% } else if (currentLang === 'ja') { %>
+      <p>まだタグがありません。</p>
       <% } else { %>
       <p>暂无标签。</p>
       <% } %>

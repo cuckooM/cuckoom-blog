@@ -15,7 +15,10 @@
     if (currentLang === 'ko') {
       return postLang === 'ko';
     }
-    return postLang !== 'en' && postLang !== 'ko';
+    if (currentLang === 'ja') {
+      return postLang === 'ja';
+    }
+    return postLang !== 'en' && postLang !== 'ko' && postLang !== 'ja';
   });
 
   // Sort by date (most recent first) and limit

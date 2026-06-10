@@ -134,3 +134,7 @@ hexo.extend.generator.register('i18n_category_en', createI18nCategoryGenerator('
 // 注册韩语标签和分类生成器
 hexo.extend.generator.register('i18n_tag_ko', createI18nTagGenerator('ko'));
 hexo.extend.generator.register('i18n_category_ko', createI18nCategoryGenerator('ko'));
+
+// 注册日语标签和分类生成器
+hexo.extend.generator.register('i18n_tag_ja', createI18nTagGenerator('ja'));
+hexo.extend.generator.register('i18n_category_ja', createI18nCategoryGenerator('ja'));

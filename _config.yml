@@ -9,9 +9,10 @@ description: 'CuckooM的个人技术博客，分享Web开发、技术实践和�
 keywords: CuckooM,博客,技术博客,Web开发,JavaScript,Node.js,Hexo
 author: CuckooM
 language:
-  - zh-CN
-  - en
-  - ko
+  - zh-CN    # 默认语言
+  - en       # 英文
+  - ko       # 韩语
+  - ja       # 日语
 timezone: 'Asia/Shanghai'
 
 # URL
@@ -130,24 +131,30 @@ theme_config:
   # Header
   # Clear default menu from landscape theme to avoid duplicate entries
   menu:
-    zh-CN:
-      首页: /
-      归档: /archives
-      分类: /categories
-      标签: /tags
-      关于: /about
-    en:
-      Home: /
-      Archives: /archives
-      Categories: /categories
-      Tags: /tags
-      About: /about
-    ko:
-      홈: /
-      아카이브: /archives
-      카테고리: /categories
-      태그: /tags
-      소개: /about
+      zh-CN:
+        首页: /
+        归档: /archives
+        分类: /categories
+        标签: /tags
+        关于: /about
+      en:
+        Home: /
+        Archives: /archives
+        Categories: /categories
+        Tags: /tags
+        About: /about
+      ko:
+        홈: /
+        아카이브: /archives
+        카테고리: /categories
+        태그: /tags
+        소개: /about
+      ja:
+        ホーム: /
+        アーカイブ: /archives
+        カテゴリー: /categories
+        タグ: /tags
+        について: /about
   # Links - only show github icon (search is built-in)
   links:
     github: https://github.com/cuckoom

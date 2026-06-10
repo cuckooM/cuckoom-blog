@@ -15,7 +15,10 @@
           if (currentLang === 'ko') {
             return post.lang === 'ko' || (post.path && post.path.startsWith('ko/'));
           }
-          return post.lang !== 'en' && post.lang !== 'ko' && !(post.path && (post.path.startsWith('en/') || post.path.startsWith('ko/')));
+          if (currentLang === 'ja') {
+            return post.lang === 'ja' || (post.path && post.path.startsWith('ja/'));
+          }
+          return post.lang !== 'en' && post.lang !== 'ko' && post.lang !== 'ja' && !(post.path && (post.path.startsWith('en/') || post.path.startsWith('ko/') || post.path.startsWith('ja/')));
         });
 
         // Group posts by year and month
@@ -32,6 +35,7 @@
         var langPrefix = '';
         if (currentLang === 'en') langPrefix = 'en/';
         else if (currentLang === 'ko') langPrefix = 'ko/';
+        else if (currentLang === 'ja') langPrefix = 'ja/';
 
         // Get month names in current language
         var monthNames;
@@ -39,6 +43,8 @@
           monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
         } else if (currentLang === 'ko') {
           monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+        } else if (currentLang === 'ja') {
+          monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
         } else {
           monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
         }

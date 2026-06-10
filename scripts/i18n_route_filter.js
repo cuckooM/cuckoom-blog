@@ -96,7 +96,7 @@ hexo.extend.filter.register('after_generate', function() {
   // 统计每种语言的文章数
   const langPostCounts = {};
   
-  // 默认语言文章数（没有 lang 属性，或 lang 不是 en/ko）
+  // 默认语言文章数（没有 lang 属性，或 lang 不是 en/ko/ja）
   langPostCounts[defaultLang] = posts.filter(p => !p.lang || !langs.includes(p.lang)).length;
   
   // 其他语言文章数
