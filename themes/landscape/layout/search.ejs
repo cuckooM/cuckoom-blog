@@ -1,8 +1,5 @@
 <%
-  var currentLang = 'zh-CN';
-  if (page && page.path && page.path.startsWith('en/')) {
-    currentLang = 'en';
-  }
+  var currentLang = page.lang || "zh-CN";
 
   var pageTitle = currentLang === 'en' ? 'Search' : '搜索';
   var placeholder = currentLang === 'en' ? 'Search articles...' : '输入关键词搜索文章...';

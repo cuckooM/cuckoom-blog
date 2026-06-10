@@ -9,7 +9,7 @@
     <ul class="article-category-list">
       <% post.categories.forEach(function(cat){ %>
         <li class="article-category-list-item">
-          <a class="article-category-list-link" href="<%- localized_url_for('/categories/' + cat.toLowerCase() + '/') %>">
+          <a class="article-category-list-link" href="<%- url_for('/categories/' + cat.toLowerCase() + '/') %>">
             <%= cat %>
           </a>
         </li>

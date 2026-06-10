@@ -1,14 +1,11 @@
 <%
-  var currentLang = 'zh-CN';
-  if (page && page.path && page.path.startsWith('en/')) {
-    currentLang = 'en';
-  }
+  var currentLang = page.lang || "zh-CN";
 
   // Get posts for this tag
   var allPosts = (locals && locals.posts ? locals.posts.toArray() : (site.posts ? site.posts.toArray() : []));
   var filteredPosts = allPosts.filter(function(post) {
     var langMatch = (currentLang === 'en')
-      ? (post.lang === 'en' || (post.path && post.path.startsWith('en/')))
+      ? (post.lang === 'en')
       : (post.lang !== 'en');
     return langMatch && post.tags && post.tags.some(function(t) { return t.name === page.tag; });
   });
@@ -28,13 +25,13 @@
     <% filteredPosts.forEach(function(post) { %>
       <article class="article-card">
         <h2 class="card-title">
-          <a href="<%- url_for(post.path) %>"><%= post.title || '(no title)' %></a>
+          <a href="<%- post_url_i18n(post) %>"><%= post.title || '(no title)' %></a>
         </h2>
         <div class="card-meta">
           <span class="meta-item"><%- date(post.date, 'YYYY-MM-DD') %></span>
           <% if (post.categories && post.categories.length) { %>
             <span class="meta-item">
-              <a href="<%- localized_url_for(post.categories.data[0].path) %>"><%= post.categories.data[0].name %></a>
+              <a href="<%- url_for(post.categories.data[0].path) %>"><%= post.categories.data[0].name %></a>
             </span>
           <% } %>
         </div>
@@ -44,7 +41,7 @@
         </div>
         <% } %>
         <div class="card-read-more">
-          <a href="<%- url_for(post.path) %>"><%- currentLang === 'en' ? 'Read More &rarr;' : '阅读更多 &rarr;' %></a>
+          <a href="<%- post_url_i18n(post) %>"><%- currentLang === 'en' ? 'Read More &rarr;' : '阅读更多 &rarr;' %></a>
         </div>
       </article>
     <% }); %>

@@ -8,7 +8,9 @@ subtitle: '技术博客 | CuckooM的个人技术博客'
 description: 'CuckooM的个人技术博客，分享Web开发、技术实践和解决方案'
 keywords: CuckooM,博客,技术博客,Web开发,JavaScript,Node.js,Hexo
 author: CuckooM
-language: zh-CN
+language:
+  - zh-CN
+  - en
 timezone: 'Asia/Shanghai'
 
 # URL
@@ -21,10 +23,6 @@ pretty_urls:
   trailing_index: true # Set to false to remove trailing 'index.html' from permalinks
   trailing_html: true # Set to false to remove trailing '.html' from permalinks
 
-# English posts use different permalink pattern
-# The 'en' prefix will be handled by the en_posts_generator.js
-en_permalink: en/:year/:month/:day/:title/
-
 # Directory
 source_dir: source
 public_dir: public
@@ -32,9 +30,13 @@ tag_dir: tags
 archive_dir: archives
 category_dir: categories
 code_dir: downloads/code
-# i18n_dir: :lang
-# English posts directory (for multi-language support)
-en_posts_dir: source/en
+i18n_dir: :lang
+
+# i18n generator config
+i18n:
+  type: [page]
+  generator: [archive, category, tag, index]
+
 skip_render:
 
 # Writing
@@ -127,18 +129,11 @@ theme_config:
   # Header
   # Clear default menu from landscape theme to avoid duplicate entries
   menu:
-    zh-CN:
-      首页: /
-      归档: /archives
-      分类: /categories
-      标签: /tags
-      关于: /about
-    en:
-      Home: /en/
-      Archives: /en/archives
-      Categories: /en/categories
-      Tags: /en/tags
-      About: /en/about
+    首页: /
+    归档: /archives
+    分类: /categories
+    标签: /tags
+    关于: /about
   # Links - only show github icon (search is built-in)
   links:
     github: https://github.com/cuckoom

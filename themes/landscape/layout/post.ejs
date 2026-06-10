@@ -1,8 +1,5 @@
 <%
-  var currentLang = 'zh-CN';
-  if (page && page.path && page.path.startsWith('en/')) {
-    currentLang = 'en';
-  }
+  var currentLang = page.lang || "zh-CN";
 %>
 
 <!-- Simplified Hero for Post Page -->
@@ -19,13 +16,13 @@
     <span class="meta-date"><%- date(page.date, 'YYYY-MM-DD') %></span>
     <% if (page.categories && page.categories.length) { %>
       <span class="meta-sep">&middot;</span>
-      <a href="<%- localized_url_for(page.categories.data[0].path) %>" class="meta-category"><%= page.categories.data[0].name %></a>
+      <a href="<%- url_for(page.categories.data[0].path) %>" class="meta-category"><%= page.categories.data[0].name %></a>
     <% } %>
     <% if (page.tags && page.tags.length) { %>
       <span class="meta-sep">&middot;</span>
       <span class="meta-tags">
         <% page.tags.forEach(function(tag) { %>
-        <a href="<%- localized_url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
+        <a href="<%- url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
         <% }) %>
       </span>
     <% } %>
@@ -41,13 +38,13 @@
 <% if (page.prev || page.next) { %>
 <nav class="post-navigation">
   <% if (page.prev) { %>
-  <a href="<%- url_for(page.prev.path) %>" class="post-nav-item post-nav-prev">
+  <a href="<%- post_url_i18n(page.prev) %>" class="post-nav-item post-nav-prev">
     <span class="post-nav-label">&larr; <%= currentLang === 'en' ? 'Previous' : '上一篇' %></span>
     <span class="post-nav-title"><%= page.prev.title %></span>
   </a>
   <% } %>
   <% if (page.next) { %>
-  <a href="<%- url_for(page.next.path) %>" class="post-nav-item post-nav-next">
+  <a href="<%- post_url_i18n(page.next) %>" class="post-nav-item post-nav-next">
     <span class="post-nav-label"><%= currentLang === 'en' ? 'Next' : '下一篇' %> &rarr;</span>
     <span class="post-nav-title"><%= page.next.title %></span>
   </a>

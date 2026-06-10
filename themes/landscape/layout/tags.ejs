@@ -1,8 +1,5 @@
 <%
-  var currentLang = 'zh-CN';
-  if (page && page.path && page.path.startsWith('en/')) {
-    currentLang = 'en';
-  }
+  var currentLang = page.lang || "zh-CN";
 
   var pageTitle = currentLang === 'en' ? 'Tags' : '标签';
   var pageDesc = currentLang === 'en' ? 'Browse posts by tag' : '按标签浏览文章';
@@ -32,9 +29,9 @@
       tags = tags.map(function(tag) {
         var posts = tag.posts.toArray().filter(function(post) {
           if (currentLang === 'en') {
-            return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
+            return post.lang === 'en';
           }
-          return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+          return post.lang !== 'en';
         });
         return {
           name: tag.name,
@@ -58,7 +55,7 @@
         var ratio = (maxCount === minCount) ? 0.5 : (tag.length - minCount) / (maxCount - minCount);
         var fontSize = 14 + 6 * ratio; // 14px to 20px
       %>
-      <a href="<%- localized_url_for(tag.path) %>" class="tag-cloud-item" style="font-size: <%= fontSize %>px;">
+      <a href="<%- url_for(tag.path) %>" class="tag-cloud-item" style="font-size: <%= fontSize %>px;">
         #<%= tag.name %>
       </a>
       <% }); %>
@@ -68,7 +65,7 @@
     <div class="tags-list-section">
       <div class="tags-list-grid">
         <% tags.forEach(function(tag) { %>
-        <a href="<%- localized_url_for(tag.path) %>" class="tag-list-item">
+        <a href="<%- url_for(tag.path) %>" class="tag-list-item">
           <span class="tag-list-name">#<%= tag.name %></span>
           <span class="tag-list-count"><%= tag.length %></span>
         </a>
