@@ -39,7 +39,7 @@
         <ul class="category-list">
           <% filteredCategories.forEach(function(category){ %>
           <li class="category-list-item">
-            <a class="category-list-link" href="<%- url_for(category.path) %>">
+            <a class="category-list-link" href="<%- url_with_lang(category.path, currentLang) %>">
               <%= category.name %>
             </a>
             <% if (theme.show_count){ %>

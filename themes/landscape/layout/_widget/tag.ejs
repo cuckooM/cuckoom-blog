@@ -39,7 +39,7 @@
         <ul class="tag-list" itemprop="keywords">
           <% filteredTags.forEach(function(tag){ %>
           <li class="tag-list-item">
-            <a class="tag-list-link" href="<%- url_for(tag.path) %>" rel="tag">
+            <a class="tag-list-link" href="<%- url_with_lang(tag.path, currentLang) %>" rel="tag">
               <%= tag.name %>
             </a>
             <% if (theme.show_count){ %>

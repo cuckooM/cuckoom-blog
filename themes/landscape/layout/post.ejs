@@ -18,13 +18,13 @@
     <span class="meta-date"><%- date(page.date, 'YYYY-MM-DD') %></span>
     <% if (page.categories && page.categories.length) { %>
       <span class="meta-sep">&middot;</span>
-      <a href="<%- url_for(page.categories.data[0].path) %>" class="meta-category"><%= page.categories.data[0].name %></a>
+      <a href="<%- url_with_lang(page.categories.data[0].path, currentLang) %>" class="meta-category"><%= page.categories.data[0].name %></a>
     <% } %>
     <% if (page.tags && page.tags.length) { %>
       <span class="meta-sep">&middot;</span>
       <span class="meta-tags">
         <% page.tags.forEach(function(tag) { %>
-        <a href="<%- url_for(tag.path) %>" class="tag-pill">#<%= tag.name %></a>
+        <a href="<%- url_with_lang(tag.path, currentLang) %>" class="tag-pill">#<%= tag.name %></a>
         <% }) %>
       </span>
     <% } %>

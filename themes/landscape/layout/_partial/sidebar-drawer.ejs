@@ -36,7 +36,7 @@
         categories.forEach(function(cat) {
       %>
       <li>
-        <a href="<%- url_for(cat.path) %>"><%= cat.name %></a>
+        <a href="<%- url_with_lang(cat.path, currentLang) %>"><%= cat.name %></a>
         <% if (theme.show_count) { %>
           <span class="widget-count"><%= cat.length %></span>
         <% } %>
@@ -86,7 +86,7 @@
           var fontSize = minFont + (maxFont - minFont) * ratio;
       %>
       <li>
-        <a href="<%= url_for(tag.path) %>" style="font-size: <%= fontSize %>px;"><%= tag.name %></a>
+        <a href="<%= url_with_lang(tag.path, currentLang) %>" style="font-size: <%= fontSize %>px;"><%= tag.name %></a>
       </li>
       <% }); %>
     </ul>
