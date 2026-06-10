@@ -142,13 +142,13 @@ body.nav-drawer-open
   width: 100%
 
 // === Mobile Only - Show drawer, hide on desktop ===
-@media mq-desktop
+@media {mq-desktop}
   .mobile-nav-drawer,
   .mobile-nav-overlay
     display: none
 
 // === Extra Small Screen Adjustments (xs: ≤374px) ===
-@media mq-xs
+@media {mq-xs}
   .mobile-nav-drawer
     width: calc(100vw - 44px)  // Leave small margin for visual cue
 
