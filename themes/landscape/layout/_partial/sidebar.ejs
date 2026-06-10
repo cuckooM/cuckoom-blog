@@ -5,6 +5,6 @@
 %>
 <aside id="sidebar"<% if (theme.sidebar === 'bottom'){ %> class="outer"<% } %>>
   <% theme.widgets.forEach(function(widget){ %>
-    <%- partial('_widget/' + widget, {pagePath: currentPagePath}) %>
+    <%- partial('_widget/' + widget, {page: page, pagePath: currentPagePath}) %>
   <% }) %>
 </aside>

@@ -11,9 +11,12 @@
         var currentLang = page.lang || "zh-CN";
         var categories = site.categories.toArray().filter(function(cat) {
           if (currentLang === 'en') {
-            return !/[\u4e00-\u9fa5]/.test(cat.name);
+            return !/[\u4e00-\u9fa5]/.test(cat.name) && !/[\uac00-\ud7af]/.test(cat.name);
           }
-          return true; // Show all categories on Chinese pages
+          if (currentLang === 'ko') {
+            return /[\uac00-\ud7af]/.test(cat.name) || !/[\u4e00-\u9fa5]/.test(cat.name);
+          }
+          return /[\u4e00-\u9fa5]/.test(cat.name); // Show Chinese categories on Chinese pages
         });
         
         // Recalculate counts based on language
@@ -22,7 +25,10 @@
             if (currentLang === 'en') {
               return post.lang === 'en';
             }
-            return post.lang !== 'en';
+            if (currentLang === 'ko') {
+              return post.lang === 'ko';
+            }
+            return post.lang !== 'en' && post.lang !== 'ko';
           });
           return {
             name: cat.name,
@@ -54,9 +60,12 @@
       <%
         var tags = site.tags.toArray().filter(function(tag) {
           if (currentLang === 'en') {
-            return !/[\u4e00-\u9fa5]/.test(tag.name);
+            return !/[\u4e00-\u9fa5]/.test(tag.name) && !/[\uac00-\ud7af]/.test(tag.name);
           }
-          return true;
+          if (currentLang === 'ko') {
+            return /[\uac00-\ud7af]/.test(tag.name) || !/[\u4e00-\u9fa5]/.test(tag.name);
+          }
+          return /[\u4e00-\u9fa5]/.test(tag.name);
         });
         
         // Recalculate counts based on language
@@ -65,7 +74,10 @@
             if (currentLang === 'en') {
               return post.lang === 'en';
             }
-            return post.lang !== 'en';
+            if (currentLang === 'ko') {
+              return post.lang === 'ko';
+            }
+            return post.lang !== 'en' && post.lang !== 'ko';
           });
           return {
             name: tag.name,
@@ -104,7 +116,10 @@
           if (currentLang === 'en') {
             return post.lang === 'en';
           }
-          return post.lang !== 'en';
+          if (currentLang === 'ko') {
+            return post.lang === 'ko';
+          }
+          return post.lang !== 'en' && post.lang !== 'ko';
         });
 
         // Group filtered posts by year and month
@@ -117,10 +132,18 @@
           archives[year][month]++;
         });
 
-        var langPrefix = currentLang === 'en' ? 'en/' : '';
-        var monthNames = currentLang === 'en'
-          ? ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-          : ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+        var langPrefix = '';
+        if (currentLang === 'en') langPrefix = 'en/';
+        else if (currentLang === 'ko') langPrefix = 'ko/';
+
+        var monthNames;
+        if (currentLang === 'en') {
+          monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        } else if (currentLang === 'ko') {
+          monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+        } else {
+          monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+        }
 
         var years = Object.keys(archives).sort(function(a, b) { return b - a; });
         years.forEach(function(year) {
@@ -150,7 +173,10 @@
             if (currentLang === 'en') {
               return post.lang === 'en';
             }
-            return post.lang !== 'en';
+            if (currentLang === 'ko') {
+              return post.lang === 'ko';
+            }
+            return post.lang !== 'en' && post.lang !== 'ko';
           })
           .sort(function(a, b) { return b.date - a.date; })
           .slice(0, 5);
