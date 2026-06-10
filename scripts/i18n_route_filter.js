@@ -123,3 +123,26 @@ hexo.extend.helper.register('post_url_i18n', function(post) {
   // 默认语言文章：URL 无前缀
   return this.url_for(post.path);
 });
+
+// 注册 helper 函数：获取同语言的文章导航（上一篇/下一篇）
+// 解决跨语言导航问题
+hexo.extend.helper.register('get_i18n_post_nav', function(post) {
+  const languages = this.config.language;
+  const defaultLang = (Array.isArray(languages) ? languages[0] : languages) || 'zh-CN';
+  const postLang = post.lang || defaultLang;
+  
+  // 获取所有文章并按日期排序（与 Hexo 默认行为一致）
+  const posts = this.site.posts.sort('-date').toArray();
+  
+  // 过滤出同语言的文章
+  const sameLangPosts = posts.filter(p => (p.lang || defaultLang) === postLang);
+  
+  // 找到当前文章在过滤列表中的索引
+  const currentIndex = sameLangPosts.findIndex(p => p._id === post._id);
+  
+  // 返回同语言的上一篇和下一篇
+  return {
+    prev: currentIndex > 0 ? sameLangPosts[currentIndex - 1] : null,
+    next: currentIndex < sameLangPosts.length - 1 ? sameLangPosts[currentIndex + 1] : null
+  };
+});

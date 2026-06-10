@@ -30,7 +30,7 @@
                 isCurrent = true;
               }
         %>
-          <a class="main-nav-link<% if (isCurrent) { %> active<% } %>" href="<%- url_for(url) %>"><%= title %></a>
+          <a class="main-nav-link<% if (isCurrent) { %> active<% } %>" href="<%- url_with_lang(url, currentLang) %>"><%= title %></a>
         <%
             }
           }

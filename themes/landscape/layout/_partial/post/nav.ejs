@@ -1,21 +1,25 @@
-<% if (post.prev || post.next){ %>
+<% 
+// 使用同语言导航 helper 解决跨语言导航问题
+var nav = get_i18n_post_nav(post);
+if (nav.prev || nav.next){ 
+%>
 <nav id="article-nav">
-  <% if (post.prev){ %>
-    <a href="<%- post_url_i18n(post.prev) %>" id="article-nav-newer" class="article-nav-link-wrap">
+  <% if (nav.prev){ %>
+    <a href="<%- post_url_i18n(nav.prev) %>" id="article-nav-newer" class="article-nav-link-wrap">
       <strong class="article-nav-caption"><%= __('newer') %></strong>
       <div class="article-nav-title">
-        <% if (post.prev.title){ %>
-          <%= post.prev.title %>
+        <% if (nav.prev.title){ %>
+          <%= nav.prev.title %>
         <% } else { %>
           (no title)
         <% } %>
       </div>
     </a>
   <% } %>
-  <% if (post.next){ %>
-    <a href="<%- post_url_i18n(post.next) %>" id="article-nav-older" class="article-nav-link-wrap">
+  <% if (nav.next){ %>
+    <a href="<%- post_url_i18n(nav.next) %>" id="article-nav-older" class="article-nav-link-wrap">
       <strong class="article-nav-caption"><%= __('older') %></strong>
-      <div class="article-nav-title"><%= post.next.title %></div>
+      <div class="article-nav-title"><%= nav.next.title %></div>
     </a>
   <% } %>
 </nav>

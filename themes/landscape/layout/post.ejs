@@ -1,5 +1,7 @@
 <%
   var currentLang = page.lang || "zh-CN";
+  // 使用同语言导航 helper 解决跨语言导航问题
+  var nav = get_i18n_post_nav(page);
 %>
 
 <!-- Simplified Hero for Post Page -->
@@ -34,19 +36,19 @@
   </div>
 </article>
 
-<!-- Post Navigation -->
-<% if (page.prev || page.next) { %>
+<!-- Post Navigation (Language-isolated) -->
+<% if (nav.prev || nav.next) { %>
 <nav class="post-navigation">
-  <% if (page.prev) { %>
-  <a href="<%- post_url_i18n(page.prev) %>" class="post-nav-item post-nav-prev">
+  <% if (nav.prev) { %>
+  <a href="<%- post_url_i18n(nav.prev) %>" class="post-nav-item post-nav-prev">
     <span class="post-nav-label">&larr; <%= currentLang === 'en' ? 'Previous' : '上一篇' %></span>
-    <span class="post-nav-title"><%= page.prev.title %></span>
+    <span class="post-nav-title"><%= nav.prev.title %></span>
   </a>
   <% } %>
-  <% if (page.next) { %>
-  <a href="<%- post_url_i18n(page.next) %>" class="post-nav-item post-nav-next">
+  <% if (nav.next) { %>
+  <a href="<%- post_url_i18n(nav.next) %>" class="post-nav-item post-nav-next">
     <span class="post-nav-label"><%= currentLang === 'en' ? 'Next' : '下一篇' %> &rarr;</span>
-    <span class="post-nav-title"><%= page.next.title %></span>
+    <span class="post-nav-title"><%= nav.next.title %></span>
   </a>
   <% } %>
 </nav>

@@ -129,11 +129,18 @@ theme_config:
   # Header
   # Clear default menu from landscape theme to avoid duplicate entries
   menu:
-    首页: /
-    归档: /archives
-    分类: /categories
-    标签: /tags
-    关于: /about
+    zh-CN:
+      首页: /
+      归档: /archives
+      分类: /categories
+      标签: /tags
+      关于: /about
+    en:
+      Home: /
+      Archives: /archives
+      Categories: /categories
+      Tags: /tags
+      About: /about
   # Links - only show github icon (search is built-in)
   links:
     github: https://github.com/cuckoom
