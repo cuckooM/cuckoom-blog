@@ -2,11 +2,34 @@
   <meta charset="utf-8">
   <%- partial('google-analytics') %>
   <%
+  var currentLang = page.lang || "zh-CN";
   var title = page.title;
   var ogUrl = page.permalink || page.path;
 
+  // Helper function for i18n based on page language
+  function i18n(key) {
+    var translations = {
+      'archive_a': { 'en': 'Archives', 'ko': '아카이브', 'ja': 'アーカイブ', 'zh-CN': '归档' },
+      'category': { 'en': 'Category', 'ko': '카테고리', 'ja': 'カテゴリー', 'zh-CN': '分类' },
+      'tag': { 'en': 'Tag', 'ko': '태그', 'ja': 'タグ', 'zh-CN': '标签' },
+      'categories': { 'en': 'Categories', 'ko': '카테고리', 'ja': 'カテゴリー', 'zh-CN': '分类' },
+      'tags': { 'en': 'Tags', 'ko': '태그', 'ja': 'タグ', 'zh-CN': '标签' },
+      'about': { 'en': 'About', 'ko': '소개', 'ja': 'について', 'zh-CN': '关于' }
+    };
+    if (translations[key] && translations[key][currentLang]) {
+      return translations[key][currentLang];
+    }
+    return __(key);
+  }
+
+  // Check if this is a tags/categories/about page based on path
+  var pagePath = page.path || '';
+  var isTagsPage = pagePath.indexOf('/tags/') !== -1 || pagePath.indexOf('tags/index.html') !== -1;
+  var isCategoriesPage = pagePath.indexOf('/categories/') !== -1 || pagePath.indexOf('categories/index.html') !== -1;
+  var isAboutPage = pagePath.indexOf('/about/') !== -1 || pagePath.indexOf('about/index.html') !== -1;
+
   if (is_archive()){
-    title = __('archive_a');
+    title = i18n('archive_a');
 
     if (is_month()){
       title += ': ' + page.year + '/' + page.month;
@@ -14,9 +37,15 @@
       title += ': ' + page.year;
     }
   } else if (is_category()){
-    title = __('category') + ': ' + page.category;
+    title = i18n('category') + ': ' + page.category;
   } else if (is_tag()){
-    title = __('tag') + ': ' + page.tag;
+    title = i18n('tag') + ': ' + page.tag;
+  } else if (isCategoriesPage){
+    title = i18n('categories');
+  } else if (isTagsPage){
+    title = i18n('tags');
+  } else if (isAboutPage){
+    title = i18n('about');
   }
 
   // 修复 og:url：英文文章需要 /en/ 前缀

@@ -2,18 +2,24 @@
   <div class="header-inner outer">
     <!-- Logo / Site Title -->
     <%
-      var headerLang = page.lang || "zh-CN";
+      var currentLang = page.lang || "zh-CN";
+      var headerLang = currentLang;
     %>
     <a href="<%- url_with_lang('', headerLang) %>" class="header-logo">
       <span class="logo-text"><%= config.title %></span>
     </a>
 
     <!-- Navigation Links -->
+    <%
+      var menuTitle = currentLang === 'en' ? 'Menu' : currentLang === 'ko' ? '메뉴' : currentLang === 'ja' ? 'メニュー' : '菜单';
+      var sidebarTitle = currentLang === 'en' ? 'Sidebar' : currentLang === 'ko' ? '사이드바' : currentLang === 'ja' ? 'サイドバー' : '侧边栏';
+      var themeTitle = currentLang === 'en' ? 'Toggle Theme' : currentLang === 'ko' ? '테마 전환' : currentLang === 'ja' ? 'テーマ切替' : '切换主题';
+      var searchPlaceholder = currentLang === 'en' ? 'Search...' : currentLang === 'ko' ? '검색...' : currentLang === 'ja' ? '検索...' : '搜索';
+    %>
     <nav id="main-nav" class="main-nav">
-      <a id="main-nav-toggle" class="nav-icon mobile-menu-toggle" title="菜单"><span class="fa fa-bars"></span></a>
+      <a id="main-nav-toggle" class="nav-icon mobile-menu-toggle" title="<%= menuTitle %>"><span class="fa fa-bars"></span></a>
       <% if (config.theme_config && config.theme_config.menu) { %>
         <%
-          var currentLang = page.lang || "zh-CN";
           var menuData = config.theme_config.menu[currentLang] || config.theme_config.menu['zh-CN'] || config.theme_config.menu;
           for (var i in menuData){
             if (typeof menuData[i] === 'string') {
@@ -44,12 +50,12 @@
     <!-- Action Buttons (right side) -->
     <nav id="sub-nav" class="sub-nav">
       <!-- Sidebar Toggle -->
-      <button class="sidebar-toggle-btn" id="sidebar-toggle" title="侧边栏" aria-label="展开侧边栏">
+      <button class="sidebar-toggle-btn" id="sidebar-toggle" title="<%= sidebarTitle %>" aria-label="<%= sidebarTitle %>">
         <span class="fa fa-bars"></span>
       </button>
 
       <!-- Theme Toggle -->
-      <button class="theme-toggle-btn" aria-label="切换主题">
+      <button class="theme-toggle-btn" aria-label="<%= themeTitle %>">
         <span class="theme-icon" aria-hidden="true">🌙</span>
       </button>
 
@@ -70,7 +76,7 @@
     <!-- Search Form (expandable) -->
     <div id="search-form-wrap" class="search-form-wrap">
       <form action="/" method="get" class="search-form">
-        <input type="search" id="search-input" class="search-form-input" placeholder="搜索">
+        <input type="search" id="search-input" class="search-form-input" placeholder="<%= searchPlaceholder %>">
         <button type="submit" class="search-form-submit">&#xF002;</button>
       </form>
       <div id="search-result" class="search-result"></div>
@@ -82,6 +88,8 @@
   // Local search (keep existing functionality)
   var searchData = null;
   var searchPath = "/search.xml";
+  var currentLang = '<%= currentLang %>';
+  var noResultMsg = currentLang === 'en' ? 'No results found' : currentLang === 'ko' ? '결과가 없습니다' : currentLang === 'ja' ? '結果が見つかりません' : '没有找到结果';
 
   function loadSearchData() {
     if (searchData !== null) return;
@@ -119,7 +127,7 @@
   function renderSearchResults(results) {
     var html = '<div class="search-result-list">';
     if (results.length === 0) {
-      html += '<div class="search-no-result"><p>没有找到结果</p></div>';
+      html += '<div class="search-no-result"><p>' + noResultMsg + '</p></div>';
     } else {
       results.forEach(function(item) {
         html += '<div class="search-result-item"><a href="' + item.url + '" class="search-result-title">' + item.title + '</a><p class="search-result-content">' + item.snippet + '</p></div>';
