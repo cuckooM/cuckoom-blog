@@ -6,11 +6,11 @@
     <entry>
       <title>{{ post.title }}</title>
       {% if post.lang and post.lang !== 'zh-CN' %}
-      <link href="{{ url + post.lang.toLowerCase() + '/' + post.path | uriencode }}"/>
-      <url>{{ url + post.lang.toLowerCase() + '/' + post.path | uriencode }}</url>
+      <link href="{{ config.url + '/' + post.lang.toLowerCase() + '/' + post.path | uriencode }}"/>
+      <url>{{ config.url + '/' + post.lang.toLowerCase() + '/' + post.path | uriencode }}</url>
       {% else %}
-      <link href="{{ url + post.path | uriencode }}"/>
-      <url>{{ url + post.path | uriencode }}</url>
+      <link href="{{ config.url + '/' + post.path | uriencode }}"/>
+      <url>{{ config.url + '/' + post.path | uriencode }}</url>
       {% endif %}
       {% if content %}
         <content type="html"><![CDATA[{{ post.content | noControlChars | safe }}]]></content>
@@ -38,8 +38,8 @@
     {% if post.indexing == undefined or post.indexing %}
     <entry>
       <title>{{ page.title }}</title>
-      <link href="{{ url + page.path | uriencode }}"/>
-      <url>{{ url + page.path | uriencode }}</url>
+      <link href="{{ config.url + '/' + page.path | uriencode }}"/>
+      <url>{{ config.url + '/' + page.path | uriencode }}</url>
       {% if content %}
         <content type="html"><![CDATA[{{ page.content | noControlChars | safe }}]]></content>
       {% endif %}
