@@ -165,6 +165,33 @@
   }
 
   $(document).ready(function() {
+    // Language switcher dropdown toggle
+    $('.lang-switcher-btn').on('click', function(e) {
+      e.stopPropagation();
+      var $switcher = $(this).closest('.lang-switcher');
+      
+      // Close other dropdowns
+      $('.lang-switcher').not($switcher).removeClass('open');
+      
+      // Toggle current
+      $switcher.toggleClass('open');
+      $(this).attr('aria-expanded', $switcher.hasClass('open'));
+    });
+
+    // Close language dropdown on outside click
+    $(document).on('click', function() {
+      $('.lang-switcher').removeClass('open');
+      $('.lang-switcher-btn').attr('aria-expanded', 'false');
+    });
+
+    // Close on Escape key
+    $(document).on('keydown', function(e) {
+      if (e.key === 'Escape') {
+        $('.lang-switcher').removeClass('open');
+        $('.lang-switcher-btn').attr('aria-expanded', 'false');
+      }
+    });
+
     // Search functionality - submit redirects to search page
     $('body').on('submit', '.search-form', function(e) {
       e.preventDefault();

@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>三语言切换器设计方案演示</title>
+  <style>
+    :root {
+      --color-primary: #4A90D9;
+      --color-bg: #FAFAFA;
+      --color-card-bg: #FFFFFF;
+      --color-text-primary: #333333;
+      --color-text-secondary: #666666;
+      --space-xs: 4px;
+      --space-sm: 8px;
+      --space-md: 16px;
+      --space-lg: 24px;
+      --radius-btn: 8px;
+      --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.12);
+      --transition-fast: 0.2s ease;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif;
+      background: var(--color-bg);
+      color: var(--color-text-primary);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      margin-bottom: 40px;
+      color: var(--color-primary);
+    }
+
+    h2 {
+      margin: 40px 0 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid var(--color-primary);
+    }
+
+    .demo-section {
+      background: var(--color-card-bg);
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 30px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .demo-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(135deg, #4A90D9 0%, #7C5CBF 100%);
+      padding: 16px 24px;
+      border-radius: var(--radius-btn);
+      margin-bottom: 20px;
+    }
+
+    .demo-header.scrolled {
+      background: var(--color-card-bg);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    }
+
+    .logo {
+      color: #fff;
+      font-weight: 700;
+      font-size: 20px;
+    }
+
+    .demo-header.scrolled .logo {
+      color: var(--color-text-primary);
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .icon-btn {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-size: 18px;
+      border-radius: var(--radius-btn);
+      cursor: pointer;
+    }
+
+    .demo-header.scrolled .icon-btn {
+      color: var(--color-text-primary);
+    }
+
+    /* ========== 方案 A: 下拉菜单 ========== */
+    .lang-switcher {
+      position: relative;
+      display: inline-block;
+    }
+
+    .lang-switcher-btn {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      font-size: 14px;
+      font-weight: 500;
+      color: #fff;
+      background: transparent;
+      border: none;
+      padding: var(--space-xs) var(--space-sm);
+      border-radius: var(--radius-btn);
+      cursor: pointer;
+      transition: color var(--transition-fast), background var(--transition-fast);
+    }
+
+    .demo-header.scrolled .lang-switcher-btn {
+      color: var(--color-text-primary);
+    }
+
+    .lang-switcher-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .demo-header.scrolled .lang-switcher-btn:hover {
+      color: var(--color-primary);
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    .lang-arrow {
+      font-size: 10px;
+      transition: transform var(--transition-fast);
+    }
+
+    .lang-switcher.open .lang-arrow {
+      transform: rotate(180deg);
+    }
+
+    .lang-dropdown {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      min-width: 120px;
+      margin-top: var(--space-xs);
+      padding: var(--space-xs) 0;
+      background: var(--color-card-bg);
+      border-radius: var(--radius-btn);
+      box-shadow: var(--shadow-card-hover);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-8px);
+      transition: opacity var(--transition-fast), transform var(--transition-fast), visibility var(--transition-fast);
+      z-index: 100;
+      list-style: none;
+    }
+
+    .lang-switcher.open .lang-dropdown {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    .lang-option {
+      display: block;
+      padding: var(--space-sm) var(--space-md);
+      font-size: 14px;
+      color: var(--color-text-primary);
+      text-decoration: none;
+      cursor: pointer;
+      transition: background var(--transition-fast), color var(--transition-fast);
+    }
+
+    .lang-option:hover {
+      background: rgba(0, 0, 0, 0.05);
+      color: var(--color-primary);
+    }
+
+    .lang-active {
+      color: var(--color-primary);
+      font-weight: 600;
+      background: rgba(74, 144, 217, 0.1);
+    }
+
+    /* ========== 方案 B: 平铺按钮 ========== */
+    .lang-switcher-inline {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .lang-item {
+      font-size: 14px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.7);
+      text-decoration: none;
+      padding: var(--space-xs) var(--space-sm);
+      border-radius: var(--radius-btn);
+      transition: color var(--transition-fast), background var(--transition-fast);
+      cursor: pointer;
+    }
+
+    .demo-header.scrolled .lang-item {
+      color: var(--color-text-secondary);
+    }
+
+    .lang-item:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .demo-header.scrolled .lang-item:hover {
+      color: var(--color-primary);
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    .lang-item.active {
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .demo-header.scrolled .lang-item.active {
+      color: var(--color-primary);
+      font-weight: 600;
+    }
+
+    .lang-divider {
+      color: rgba(255, 255, 255, 0.3);
+      font-size: 12px;
+    }
+
+    .demo-header.scrolled .lang-divider {
+      color: var(--color-text-secondary);
+      opacity: 0.3;
+    }
+
+    /* ========== 方案 C: 图标 + 下拉 ========== */
+    .lang-icon {
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    /* ========== 说明文字 ========== */
+    .description {
+      background: #f0f7ff;
+      border-left: 4px solid var(--color-primary);
+      padding: 12px 16px;
+      margin-top: 20px;
+      font-size: 14px;
+      color: var(--color-text-secondary);
+    }
+
+    .description strong {
+      color: var(--color-primary);
+    }
+
+    .pros-cons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .pros, .cons {
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .pros {
+      background: #e8f5e9;
+    }
+
+    .cons {
+      background: #fff3e0;
+    }
+
+    .pros h4, .cons h4 {
+      margin-bottom: 8px;
+    }
+
+    .pros h4 { color: #2e7d32; }
+    .cons h4 { color: #ef6c00; }
+
+    ul { padding-left: 16px; }
+    li { margin-bottom: 4px; }
+
+    .recommendation {
+      background: linear-gradient(135deg, #4A90D9 0%, #7C5CBF 100%);
+      color: #fff;
+      padding: 24px;
+      border-radius: 12px;
+      margin-top: 40px;
+    }
+
+    .recommendation h2 {
+      color: #fff;
+      border-bottom-color: rgba(255,255,255,0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌐 三语言切换器设计方案</h1>
+
+    <!-- 方案 A -->
+    <h2>方案 A：下拉菜单（推荐）</h2>
+    <div class="demo-section">
+      <div class="demo-header">
+        <span class="logo">My Blog</span>
+        <div class="actions">
+          <button class="icon-btn">🔍</button>
+          <button class="icon-btn">🌙</button>
+          <div class="lang-switcher" id="switcherA">
+            <button class="lang-switcher-btn" onclick="toggleDropdown('switcherA')">
+              <span class="lang-current">中文</span>
+              <span class="lang-arrow">▼</span>
+            </button>
+            <ul class="lang-dropdown">
+              <li><span class="lang-option lang-active">中文</span></li>
+              <li><a href="#" class="lang-option">English</a></li>
+              <li><a href="#" class="lang-option">한국어</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="description">
+        <strong>交互方式：</strong>点击当前语言按钮，下拉显示所有语言选项，当前语言高亮显示。
+      </div>
+
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>✅ 优点</h4>
+          <ul>
+            <li>节省空间，界面简洁</li>
+            <li>移动端友好，触摸区域大</li>
+            <li>可扩展性强，未来添加语言不影响布局</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>⚠️ 缺点</h4>
+          <ul>
+            <li>需要额外点击才能看到选项</li>
+            <li>下拉菜单在小屏幕上需要适配</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案 B -->
+    <h2>方案 B：平铺按钮</h2>
+    <div class="demo-section">
+      <div class="demo-header">
+        <span class="logo">My Blog</span>
+        <div class="actions">
+          <button class="icon-btn">🔍</button>
+          <button class="icon-btn">🌙</button>
+          <div class="lang-switcher-inline">
+            <span class="lang-item active">中文</span>
+            <span class="lang-divider">|</span>
+            <a href="#" class="lang-item">EN</a>
+            <span class="lang-divider">|</span>
+            <a href="#" class="lang-item">한국어</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="description">
+        <strong>交互方式：</strong>三个语言选项并排显示，当前语言高亮且不可点击，其他语言可直接点击切换。
+      </div>
+
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>✅ 优点</h4>
+          <ul>
+            <li>直观明了，一键切换</li>
+            <li>无需展开，所有选项可见</li>
+            <li>操作效率高</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>⚠️ 缺点</h4>
+          <ul>
+            <li>占用较多空间</li>
+            <li>语言增多时布局拥挤</li>
+            <li>移动端可能需要换行或收缩</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案 C -->
+    <h2>方案 C：图标 + 下拉菜单</h2>
+    <div class="demo-section">
+      <div class="demo-header">
+        <span class="logo">My Blog</span>
+        <div class="actions">
+          <button class="icon-btn">🔍</button>
+          <button class="icon-btn">🌙</button>
+          <div class="lang-switcher" id="switcherC">
+            <button class="lang-switcher-btn" onclick="toggleDropdown('switcherC')">
+              <span class="lang-icon">🌐</span>
+              <span class="lang-current">中文</span>
+              <span class="lang-arrow">▼</span>
+            </button>
+            <ul class="lang-dropdown">
+              <li><span class="lang-option lang-active">中文</span></li>
+              <li><a href="#" class="lang-option">English</a></li>
+              <li><a href="#" class="lang-option">한국어</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="description">
+        <strong>交互方式：</strong>在方案 A 基础上添加地球图标 🌐，增强视觉识别度。
+      </div>
+
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>✅ 优点</h4>
+          <ul>
+            <li>图标增强识别度</li>
+            <li>节省空间</li>
+            <li>国际化风格</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>⚠️ 缺点</h4>
+          <ul>
+            <li>图标可能增加视觉复杂度</li>
+            <li>同方案 A 的下拉菜单缺点</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- 推荐 -->
+    <div class="recommendation">
+      <h2>🏆 推荐方案：方案 A（下拉菜单）</h2>
+      <p style="margin-top: 16px;">
+        综合考虑空间利用率、移动端适配、可扩展性等因素，<strong>方案 A</strong> 是最佳选择。
+        它简洁优雅，与博客整体设计风格一致，且未来添加更多语言也不会影响布局。
+      </p>
+      <p style="margin-top: 12px; font-size: 14px; opacity: 0.9;">
+        已实现到主题中，查看 <code>themes/landscape/layout/_partial/language-switcher.ejs</code>
+        和 <code>themes/landscape/source/css/_partial/header.styl</code>
+      </p>
+    </div>
+  </div>
+
+  <script>
+    function toggleDropdown(id) {
+      const switcher = document.getElementById(id);
+      const allSwitchers = document.querySelectorAll('.lang-switcher');
+
+      allSwitchers.forEach(s => {
+        if (s.id !== id) s.classList.remove('open');
+      });
+
+      switcher.classList.toggle('open');
+    }
+
+    // Close on outside click
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.lang-switcher')) {
+        document.querySelectorAll('.lang-switcher').forEach(s => s.classList.remove('open'));
+      }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.lang-switcher').forEach(s => s.classList.remove('open'));
+      }
+    });
+  </script>
+</body>
+</html>

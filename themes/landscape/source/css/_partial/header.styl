@@ -192,35 +192,108 @@
       color: var(--color-primary)
       background: rgba(0, 0, 0, 0.05)
 
-// Language switcher in header
+// ============================================
+// Language Switcher - Dropdown Style
+// ============================================
+.lang-switcher
+  position: relative
+  display: inline-block
+
 .lang-switcher-btn
-  font-size: 14px
+  display: flex
+  align-items: center
+  gap: var(--space-xs)
+  font-size: var(--font-size-sm)
   font-weight: 500
-  color: var(--color-text-primary)  // default visible color
-  text-decoration: none
+  color: var(--color-text-primary)
+  background: transparent
+  border: none
   padding: var(--space-xs) var(--space-sm)
   border-radius: var(--radius-btn)
+  cursor: pointer
   transition: color var(--transition-fast), background var(--transition-fast)
 
   &:hover
     color: var(--color-primary)
     background: rgba(0, 0, 0, 0.05)
 
-  // White only on pages with hero gradient
+  // White text on hero gradient
   .site-header:not(.scrolled):not(.no-hero) &
     color: #FFFFFF
-
     &:hover
       color: rgba(255, 255, 255, 0.85)
-      background: rgba(255, 255, 255, 0.1)
+      background: rgba(255, 255, 255, 0.15)
 
-  // Dark text when header has solid background (scrolled)
+  // Dark text when scrolled
   .site-header.scrolled &
     color: var(--color-text-primary)
-
     &:hover
       color: var(--color-primary)
       background: rgba(0, 0, 0, 0.05)
+
+.lang-current
+  line-height: 1
+
+.lang-arrow
+  font-size: 10px
+  line-height: 1
+  transition: transform var(--transition-fast)
+
+.lang-switcher.open .lang-arrow
+  transform: rotate(180deg)
+
+.lang-dropdown
+  position: absolute
+  top: 100%
+  right: 0
+  min-width: 120px
+  margin-top: var(--space-xs)
+  padding: var(--space-xs) 0
+  background: var(--color-card-bg)
+  border-radius: var(--radius-btn)
+  box-shadow: var(--shadow-card-hover)
+  opacity: 0
+  visibility: hidden
+  transform: translateY(-8px)
+  transition: opacity var(--transition-fast), transform var(--transition-fast), visibility var(--transition-fast)
+  z-index: 100
+
+  li
+    list-style: none
+
+.lang-option
+  display: block
+  padding: var(--space-sm) var(--space-md)
+  font-size: var(--font-size-sm)
+  color: var(--color-text-primary)
+  text-decoration: none
+  cursor: pointer
+  transition: background var(--transition-fast), color var(--transition-fast)
+
+  &:hover
+    background: rgba(0, 0, 0, 0.05)
+    color: var(--color-primary)
+
+.lang-active
+  color: var(--color-primary)
+  font-weight: 600
+  background: rgba(74, 144, 217, 0.1)
+
+// Open state
+.lang-switcher.open .lang-dropdown
+  opacity: 1
+  visibility: visible
+  transform: translateY(0)
+
+// Mobile styles for language dropdown
+@media screen and (max-width: 767px)
+  .lang-dropdown
+    right: auto
+    left: 50%
+    transform: translateX(-50%) translateY(-8px)
+
+  .lang-switcher.open .lang-dropdown
+    transform: translateX(-50%) translateY(0)
 
 // Search form (expandable)
 .search-form-wrap

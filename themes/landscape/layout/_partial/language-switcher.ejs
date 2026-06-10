@@ -1,10 +1,27 @@
 <%
   // Get current language from page.lang
   var currentLang = page.lang || "zh-CN";
-
-  // Toggle: show the opposite language label
-  var toggleLabel = (currentLang === 'zh-CN') ? 'EN' : '中文';
-  var togglePath = (currentLang === 'zh-CN') ? '/en/' : '/';
+  var langMap = {
+    'zh-CN': { label: '中文', path: '/' },
+    'en': { label: 'English', path: '/en/' },
+    'ko': { label: '한국어', path: '/ko/' }
+  };
+  var currentLangData = langMap[currentLang];
 %>
-
-<a href="<%= togglePath %>" class="lang-switcher-btn" title="Switch language"><%= toggleLabel %></a>
+<div class="lang-switcher">
+  <button class="lang-switcher-btn" aria-label="选择语言" aria-expanded="false">
+    <span class="lang-current"><%= currentLangData.label %></span>
+    <span class="lang-arrow">▼</span>
+  </button>
+  <ul class="lang-dropdown">
+    <% Object.keys(langMap).forEach(function(lang) { %>
+      <li>
+        <% if (lang === currentLang) { %>
+          <span class="lang-option lang-active"><%= langMap[lang].label %></span>
+        <% } else { %>
+          <a href="<%= langMap[lang].path %>" class="lang-option"><%= langMap[lang].label %></a>
+        <% } %>
+      </li>
+    <% }); %>
+  </ul>
+</div>
