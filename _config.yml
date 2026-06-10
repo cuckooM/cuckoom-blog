@@ -11,6 +11,7 @@ author: CuckooM
 language:
   - zh-CN
   - en
+  - ko
 timezone: 'Asia/Shanghai'
 
 # URL
@@ -141,6 +142,12 @@ theme_config:
       Categories: /categories
       Tags: /tags
       About: /about
+    ko:
+      홈: /
+      아카이브: /archives
+      카테고리: /categories
+      태그: /tags
+      소개: /about
   # Links - only show github icon (search is built-in)
   links:
     github: https://github.com/cuckoom

@@ -1,122 +1,136 @@
 /**
  * i18n Tag Generator
- * 为每个英文标签生成独立的 /en/tags/xxx/ 页面
+ * 为每个非默认语言的标签生成独立的页面 (如 /en/tags/xxx/, /ko/tags/xxx/)
  * 
  * 解决 hexo-generator-i18n 的限制：
  * - i18n generator 只生成 /en/tags/index.html（列表页）
  * - 不生成具体的 /en/tags/PostgreSQL/ 页面
  * 
- * 本脚本注册自定义 generator，直接生成英文标签页面：
- * - 收集所有英文文章的标签
- * - 为每个标签生成独立的英文页面
- * - 使用 tag.ejs 模板渲染
+ * 本脚本注册自定义 generator，为所有非默认语言生成标签和分类页面
  */
 
 'use strict';
 
-hexo.extend.generator.register('i18n_tag', function(locals) {
-  const posts = locals.posts;
-  
-  // 获取所有英文文章
-  const englishPosts = posts.filter(post => post.lang === 'en');
-  
-  if (englishPosts.length === 0) {
-    return [];
-  }
-  
-  // 收集英文文章的所有标签
-  const englishTags = new Map();
-  
-  englishPosts.forEach(post => {
-    if (post.tags && post.tags.length > 0) {
-      post.tags.toArray().forEach(tag => {
-        if (!englishTags.has(tag.name)) {
-          englishTags.set(tag.name, {
-            name: tag.name,
-            slug: tag.slug,
-            posts: []
-          });
-        }
-        englishTags.get(tag.name).posts.push(post);
-      });
+/**
+ * 通用的 i18n 标签生成器工厂函数
+ * @param {string} lang - 语言代码
+ */
+function createI18nTagGenerator(lang) {
+  return function(locals) {
+    const posts = locals.posts;
+    
+    // 获取该语言的文章
+    const langPosts = posts.filter(post => post.lang === lang);
+    
+    if (langPosts.length === 0) {
+      return [];
     }
-  });
-  
-  // 为每个英文标签生成页面
-  const result = [];
-  
-  englishTags.forEach((tagData, tagName) => {
-    result.push({
-      path: `en/tags/${tagData.slug}/index.html`,
-      layout: ['tag', 'index'],
-      data: {
-        tag: tagName,
-        lang: 'en',
-        posts: locals.posts.filter(post => {
-          return post.lang === 'en' && 
-                 post.tags && 
-                 post.tags.some(t => t.name === tagName);
-        })
+    
+    // 收集该语言文章的所有标签
+    const langTags = new Map();
+    
+    langPosts.forEach(post => {
+      if (post.tags && post.tags.length > 0) {
+        post.tags.toArray().forEach(tag => {
+          if (!langTags.has(tag.name)) {
+            langTags.set(tag.name, {
+              name: tag.name,
+              slug: tag.slug,
+              posts: []
+            });
+          }
+          langTags.get(tag.name).posts.push(post);
+        });
       }
     });
-  });
-  
-  hexo.log.info(`[i18n_tag] Generated ${result.length} English tag pages`);
-  
-  return result;
-});
+    
+    // 为每个标签生成页面
+    const result = [];
+    
+    langTags.forEach((tagData, tagName) => {
+      result.push({
+        path: `${lang}/tags/${tagData.slug}/index.html`,
+        layout: ['tag', 'index'],
+        data: {
+          tag: tagName,
+          lang: lang,
+          posts: locals.posts.filter(post => {
+            return post.lang === lang && 
+                   post.tags && 
+                   post.tags.some(t => t.name === tagName);
+          })
+        }
+      });
+    });
+    
+    hexo.log.info(`[i18n_tag_${lang}] Generated ${result.length} ${lang.toUpperCase()} tag pages`);
+    
+    return result;
+  };
+}
 
 /**
- * 同样为英文分类生成页面（如果 hexo-generator-i18n 没有生成）
+ * 通用的 i18n 分类生成器工厂函数
+ * @param {string} lang - 语言代码
  */
-hexo.extend.generator.register('i18n_category', function(locals) {
-  const posts = locals.posts;
-  
-  // 获取所有英文文章
-  const englishPosts = posts.filter(post => post.lang === 'en');
-  
-  if (englishPosts.length === 0) {
-    return [];
-  }
-  
-  // 收集英文文章的所有分类
-  const englishCategories = new Map();
-  
-  englishPosts.forEach(post => {
-    if (post.categories && post.categories.length > 0) {
-      post.categories.toArray().forEach(cat => {
-        if (!englishCategories.has(cat.name)) {
-          englishCategories.set(cat.name, {
-            name: cat.name,
-            slug: cat.slug,
-            posts: []
-          });
-        }
-        englishCategories.get(cat.name).posts.push(post);
-      });
+function createI18nCategoryGenerator(lang) {
+  return function(locals) {
+    const posts = locals.posts;
+    
+    // 获取该语言的文章
+    const langPosts = posts.filter(post => post.lang === lang);
+    
+    if (langPosts.length === 0) {
+      return [];
     }
-  });
-  
-  // 为每个英文分类生成页面
-  const result = [];
-  
-  englishCategories.forEach((catData, catName) => {
-    result.push({
-      path: `en/categories/${catData.slug}/index.html`,
-      layout: ['category', 'index'],
-      data: {
-        category: catName,
-        lang: 'en',
-        posts: locals.posts.filter(post => {
-          return post.lang === 'en' && 
-                 post.categories && 
-                 post.categories.some(c => c.name === catName);
-        })
+    
+    // 收集该语言文章的所有分类
+    const langCategories = new Map();
+    
+    langPosts.forEach(post => {
+      if (post.categories && post.categories.length > 0) {
+        post.categories.toArray().forEach(cat => {
+          if (!langCategories.has(cat.name)) {
+            langCategories.set(cat.name, {
+              name: cat.name,
+              slug: cat.slug,
+              posts: []
+            });
+          }
+          langCategories.get(cat.name).posts.push(post);
+        });
       }
     });
-  });
-  
-  hexo.log.info(`[i18n_category] Generated ${result.length} English category pages`);
-  
-  return result;
-});
+    
+    // 为每个分类生成页面
+    const result = [];
+    
+    langCategories.forEach((catData, catName) => {
+      result.push({
+        path: `${lang}/categories/${catData.slug}/index.html`,
+        layout: ['category', 'index'],
+        data: {
+          category: catName,
+          lang: lang,
+          posts: locals.posts.filter(post => {
+            return post.lang === lang && 
+                   post.categories && 
+                   post.categories.some(c => c.name === catName);
+          })
+        }
+      });
+    });
+    
+    hexo.log.info(`[i18n_category_${lang}] Generated ${result.length} ${lang.toUpperCase()} category pages`);
+    
+    return result;
+  };
+}
+
+// 注册英文标签和分类生成器
+hexo.extend.generator.register('i18n_tag_en', createI18nTagGenerator('en'));
+hexo.extend.generator.register('i18n_category_en', createI18nCategoryGenerator('en'));
+
+// 注册韩语标签和分类生成器
+hexo.extend.generator.register('i18n_tag_ko', createI18nTagGenerator('ko'));
+hexo.extend.generator.register('i18n_category_ko', createI18nCategoryGenerator('ko'));
