@@ -236,6 +236,11 @@
       closeSidebarDrawer();
     });
 
+    // Close drawer on close button click
+    $('#drawer-close').on('click', function() {
+      closeSidebarDrawer();
+    });
+
     // Close drawer on Esc key
     $(document).on('keydown', function(e) {
       if (e.key === 'Escape') {
