@@ -9,7 +9,13 @@
   // Filter posts by language based on the current page context
   var filteredPosts = allPosts.filter(function(post) {
     var postLang = post.lang || 'zh-CN'; // Default to Chinese if no lang specified
-    return (currentLang === 'en') ? (postLang === 'en') : (postLang !== 'en');
+    if (currentLang === 'en') {
+      return postLang === 'en';
+    }
+    if (currentLang === 'ko') {
+      return postLang === 'ko';
+    }
+    return postLang !== 'en' && postLang !== 'ko';
   });
 
   // Sort by date (most recent first) and limit

@@ -12,7 +12,10 @@
           if (currentLang === 'en') {
             return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
           }
-          return post.lang !== 'en' && !(post.path && post.path.startsWith('en/'));
+          if (currentLang === 'ko') {
+            return post.lang === 'ko' || (post.path && post.path.startsWith('ko/'));
+          }
+          return post.lang !== 'en' && post.lang !== 'ko' && !(post.path && (post.path.startsWith('en/') || post.path.startsWith('ko/')));
         });
 
         // Group posts by year and month
@@ -26,12 +29,19 @@
         });
 
         // Generate language prefix
-        var langPrefix = currentLang === 'en' ? 'en/' : '';
+        var langPrefix = '';
+        if (currentLang === 'en') langPrefix = 'en/';
+        else if (currentLang === 'ko') langPrefix = 'ko/';
 
         // Get month names in current language
-        var monthNames = currentLang === 'en'
-          ? ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-          : ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+        var monthNames;
+        if (currentLang === 'en') {
+          monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        } else if (currentLang === 'ko') {
+          monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+        } else {
+          monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+        }
         %>
         <% for (var year in archives) { %>
           <% var months = archives[year]; %>

@@ -9,7 +9,10 @@
         // Filter categories by language
         var filteredCategories = site.categories.toArray().filter(function(cat) {
           if (currentLang === 'en') {
-            return !/[\u4e00-\u9fa5]/.test(cat.name);
+            return !/[\u4e00-\u9fa5]/.test(cat.name) && !/[\uac00-\ud7af]/.test(cat.name);
+          }
+          if (currentLang === 'ko') {
+            return /[\uac00-\ud7af]/.test(cat.name);
           }
           return /[\u4e00-\u9fa5]/.test(cat.name);
         });
@@ -20,7 +23,10 @@
             if (currentLang === 'en') {
               return post.lang === 'en';
             }
-            return post.lang !== 'en';
+            if (currentLang === 'ko') {
+              return post.lang === 'ko';
+            }
+            return post.lang !== 'en' && post.lang !== 'ko';
           });
           return {
             name: cat.name,
