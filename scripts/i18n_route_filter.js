@@ -89,6 +89,55 @@ hexo.extend.filter.register('after_generate', function() {
   
   log.info(`[i18n_route] Successfully relocated ${routesToMove.length} non-default language posts`);
   
+  // 处理分页：删除多余的分页页面
+  const perPage = config.per_page || 10;
+  const langs = languages.filter(l => l !== defaultLang); // 非默认语言列表
+  
+  // 统计每种语言的文章数
+  const langPostCounts = {};
+  
+  // 默认语言文章数（没有 lang 属性，或 lang 不是 en/ko）
+  langPostCounts[defaultLang] = posts.filter(p => !p.lang || !langs.includes(p.lang)).length;
+  
+  // 其他语言文章数
+  langs.forEach(lang => {
+    langPostCounts[lang] = posts.filter(p => p.lang === lang).length;
+  });
+  
+  log.info(`[i18n_route] Post counts by language: ${JSON.stringify(langPostCounts)}`);
+  
+  // 删除超出实际分页数的页面
+  let removedPages = 0;
+  
+  Object.entries(langPostCounts).forEach(([lang, count]) => {
+    const totalPages = Math.ceil(count / perPage) || 1;
+    const langPrefix = lang === defaultLang ? '' : lang + '/';
+    
+    // 获取该语言的所有分页路由
+    const pageRoutes = Object.keys(route.routes).filter(path => {
+      // 匹配分页路径：page/2/, page/3/ 或 en/page/2/, ko/page/2/ 等
+      const pagePattern = langPrefix + 'page/';
+      return path.startsWith(pagePattern);
+    });
+    
+    pageRoutes.forEach(path => {
+      // 提取页码
+      const pageNumMatch = path.match(/page\/(\d+)/);
+      if (pageNumMatch) {
+        const pageNum = parseInt(pageNumMatch[1]);
+        if (pageNum > totalPages) {
+          route.remove(path);
+          log.info(`[i18n_route] Removed excess pagination: ${path} (lang ${lang} has ${count} posts, needs only ${totalPages} page(s))`);
+          removedPages++;
+        }
+      }
+    });
+  });
+  
+  if (removedPages > 0) {
+    log.info(`[i18n_route] Removed ${removedPages} excess pagination page(s)`);
+  }
+  
   // 处理 pages（如 about 页面）
   // hexo-generator-i18n 生成的多语言页面路径有问题：
   // - /en/about/ko-index.html 是韩语内容，但路径错误
