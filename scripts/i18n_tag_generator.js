@@ -15,7 +15,6 @@
 'use strict';
 
 hexo.extend.generator.register('i18n_tag', function(locals) {
-  const config = this.config;
   const posts = locals.posts;
   
   // 获取所有英文文章
@@ -71,7 +70,6 @@ hexo.extend.generator.register('i18n_tag', function(locals) {
  * 同样为英文分类生成页面（如果 hexo-generator-i18n 没有生成）
  */
 hexo.extend.generator.register('i18n_category', function(locals) {
-  const config = this.config;
   const posts = locals.posts;
   
   // 获取所有英文文章
