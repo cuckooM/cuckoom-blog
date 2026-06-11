@@ -198,12 +198,18 @@ hexo.extend.filter.register('after_generate', async function() {
           for (const otherLang of nonDefaultLangs) {
             if (otherLang !== lang) {
               const wrongFile = `${lang}/${pageDir}/${otherLang}-index.html`;
-              // 使用公开 API route.list 检查路由是否存在
               if (route.list().includes(wrongFile)) {
                 route.remove(wrongFile);
                 log.debug(`[i18n_route] Removed misplaced: ${wrongFile}`);
               }
             }
+          }
+          
+          // 删除默认路径下的残留 xx-index.html（如 /about/ja-index.html）
+          const residueFile = `${pageDir}/${lang}-index.html`;
+          if (route.list().includes(residueFile)) {
+            route.remove(residueFile);
+            log.info(`[i18n_route] Removed residue: ${residueFile}`);
           }
         }
       }
