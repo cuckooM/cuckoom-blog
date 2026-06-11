@@ -4,22 +4,8 @@
     <div class="widget">
       <ul class="archive-list">
         <%
-        // Get current language from helper
         var currentLang = page.lang || "zh-CN";
-
-        // Filter posts by language
-        var filteredPosts = site.posts.toArray().filter(function(post) {
-          if (currentLang === 'en') {
-            return post.lang === 'en' || (post.path && post.path.startsWith('en/'));
-          }
-          if (currentLang === 'ko') {
-            return post.lang === 'ko' || (post.path && post.path.startsWith('ko/'));
-          }
-          if (currentLang === 'ja') {
-            return post.lang === 'ja' || (post.path && post.path.startsWith('ja/'));
-          }
-          return post.lang !== 'en' && post.lang !== 'ko' && post.lang !== 'ja' && !(post.path && (post.path.startsWith('en/') || post.path.startsWith('ko/') || post.path.startsWith('ja/')));
-        });
+        var filteredPosts = filter_posts_by_lang(site.posts.toArray(), currentLang);
 
         // Group posts by year and month
         var archives = {};
@@ -31,31 +17,17 @@
           archives[year][month].push(post);
         });
 
-        // Generate language prefix
-        var langPrefix = '';
-        if (currentLang === 'en') langPrefix = 'en/';
-        else if (currentLang === 'ko') langPrefix = 'ko/';
-        else if (currentLang === 'ja') langPrefix = 'ja/';
-
-        // Get month names in current language
-        var monthNames;
-        if (currentLang === 'en') {
-          monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-        } else if (currentLang === 'ko') {
-          monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
-        } else if (currentLang === 'ja') {
-          monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
-        } else {
-          monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
-        }
+        var langPrefix = get_lang_prefix(currentLang);
+        var monthNames = get_month_names(currentLang);
         %>
         <% for (var year in archives) { %>
           <% var months = archives[year]; %>
           <% for (var month in months) { %>
             <li class="archive-list-item">
               <a class="archive-list-link" href="<%- url_for(langPrefix + 'archives/' + year + '/' + month + '/') %>">
-                <%= monthNames[parseInt(month) - 1] %> <%- year %>
+                <%= monthNames[parseInt(month) - 1] %> <%= year %>
               </a>
+              <span class="archive-list-count"><%= months[month].length %></span>
             </li>
           <% } %>
         <% } %>

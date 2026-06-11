@@ -1,6 +1,6 @@
 <aside class="sidebar-drawer" id="sidebar-drawer">
   <!-- Close Button -->
-  <button class="drawer-close" id="drawer-close" aria-label="关闭侧边栏">&times;</button>
+  <button class="drawer-close" id="drawer-close" aria-label="<%= __('close') %>">&times;</button>
 
   <!-- Categories Widget -->
   <% if (site.categories && site.categories.length) { %>
@@ -9,42 +9,7 @@
     <ul class="widget-list">
       <%
         var currentLang = page.lang || "zh-CN";
-        var categories = site.categories.toArray().filter(function(cat) {
-          if (currentLang === 'en') {
-            return !/[\u4e00-\u9fa5]/.test(cat.name) && !/[\uac00-\ud7af]/.test(cat.name) && !/[\u3040-\u30ff]/.test(cat.name);
-          }
-          if (currentLang === 'ko') {
-            return /[\uac00-\ud7af]/.test(cat.name) || !/[\u4e00-\u9fa5]/.test(cat.name);
-          }
-          if (currentLang === 'ja') {
-            return /[\u3040-\u30ff]/.test(cat.name) || !/[\u4e00-\u9fa5]/.test(cat.name);
-          }
-          return /[\u4e00-\u9fa5]/.test(cat.name); // Show Chinese categories on Chinese pages
-        });
-        
-        // Recalculate counts based on language
-        categories = categories.map(function(cat) {
-          var filteredPosts = cat.posts.toArray().filter(function(post) {
-            if (currentLang === 'en') {
-              return post.lang === 'en';
-            }
-            if (currentLang === 'ko') {
-              return post.lang === 'ko';
-            }
-            if (currentLang === 'ja') {
-              return post.lang === 'ja';
-            }
-            return post.lang !== 'en' && post.lang !== 'ko' && post.lang !== 'ja';
-          });
-          return {
-            name: cat.name,
-            path: cat.path,
-            length: filteredPosts.length
-          };
-        }).filter(function(cat) {
-          return cat.length > 0; // Remove empty categories
-        });
-        
+        var categories = filter_categories_by_lang(site.categories, currentLang);
         categories.forEach(function(cat) {
       %>
       <li>
@@ -64,42 +29,7 @@
     <h3 class="widget-title"><%= __('tagcloud') %></h3>
     <ul class="widget-list tag-cloud">
       <%
-        var tags = site.tags.toArray().filter(function(tag) {
-          if (currentLang === 'en') {
-            return !/[\u4e00-\u9fa5]/.test(tag.name) && !/[\uac00-\ud7af]/.test(tag.name) && !/[\u3040-\u30ff]/.test(tag.name);
-          }
-          if (currentLang === 'ko') {
-            return /[\uac00-\ud7af]/.test(tag.name) || !/[\u4e00-\u9fa5]/.test(tag.name);
-          }
-          if (currentLang === 'ja') {
-            return /[\u3040-\u30ff]/.test(tag.name) || !/[\u4e00-\u9fa5]/.test(tag.name);
-          }
-          return /[\u4e00-\u9fa5]/.test(tag.name);
-        });
-        
-        // Recalculate counts based on language
-        tags = tags.map(function(tag) {
-          var filteredPosts = tag.posts.toArray().filter(function(post) {
-            if (currentLang === 'en') {
-              return post.lang === 'en';
-            }
-            if (currentLang === 'ko') {
-              return post.lang === 'ko';
-            }
-            if (currentLang === 'ja') {
-              return post.lang === 'ja';
-            }
-            return post.lang !== 'en' && post.lang !== 'ko' && post.lang !== 'ja';
-          });
-          return {
-            name: tag.name,
-            path: tag.path,
-            length: filteredPosts.length
-          };
-        }).filter(function(tag) {
-          return tag.length > 0; // Remove empty tags
-        });
-        
+        var tags = filter_tags_by_lang(site.tags, currentLang);
         var counts = tags.map(function(t) { return t.length; });
         var minCount = tags.length > 0 ? Math.min.apply(Math, counts) : 0;
         var maxCount = tags.length > 0 ? Math.max.apply(Math, counts) : 0;
@@ -123,19 +53,8 @@
     <h3 class="widget-title"><%= __('archive_a') %></h3>
     <ul class="widget-list">
       <%
-        // Filter posts by language
-        var filteredPosts = site.posts.toArray().filter(function(post) {
-          if (currentLang === 'en') {
-            return post.lang === 'en';
-          }
-          if (currentLang === 'ko') {
-            return post.lang === 'ko';
-          }
-          if (currentLang === 'ja') {
-            return post.lang === 'ja';
-          }
-          return post.lang !== 'en' && post.lang !== 'ko' && post.lang !== 'ja';
-        });
+        var allPosts = site.posts.toArray();
+        var filteredPosts = filter_posts_by_lang(allPosts, currentLang);
 
         // Group filtered posts by year and month
         var archives = {};
@@ -147,21 +66,8 @@
           archives[year][month]++;
         });
 
-        var langPrefix = '';
-        if (currentLang === 'en') langPrefix = 'en/';
-        else if (currentLang === 'ko') langPrefix = 'ko/';
-        else if (currentLang === 'ja') langPrefix = 'ja/';
-
-        var monthNames;
-        if (currentLang === 'en') {
-          monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        } else if (currentLang === 'ko') {
-          monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
-        } else if (currentLang === 'ja') {
-          monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
-        } else {
-          monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
-        }
+        var langPrefix = get_lang_prefix(currentLang);
+        var monthNames = get_month_names(currentLang);
 
         var years = Object.keys(archives).sort(function(a, b) { return b - a; });
         years.forEach(function(year) {
@@ -186,19 +92,7 @@
     <ul class="widget-list">
       <%
         var allPosts = site.posts.toArray();
-        var recentPosts = allPosts
-          .filter(function(post) {
-            if (currentLang === 'en') {
-              return post.lang === 'en';
-            }
-            if (currentLang === 'ko') {
-              return post.lang === 'ko';
-            }
-            if (currentLang === 'ja') {
-              return post.lang === 'ja';
-            }
-            return post.lang !== 'en' && post.lang !== 'ko' && post.lang !== 'ja';
-          })
+        var recentPosts = filter_posts_by_lang(allPosts, currentLang)
           .sort(function(a, b) { return b.date - a.date; })
           .slice(0, 5);
         recentPosts.forEach(function(post) {

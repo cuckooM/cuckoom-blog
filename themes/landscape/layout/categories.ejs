@@ -17,46 +17,8 @@
 <div class="category-grid">
   <% if (site.categories && site.categories.length) { %>
     <%
-      // Filter categories by language (based on category name)
-      var categories = site.categories.toArray().filter(function(cat) {
-        if (currentLang === 'en') {
-          return !/[\u4e00-\u9fa5]/.test(cat.name) && !/[\uac00-\ud7af]/.test(cat.name) && !/[\u3040-\u30ff]/.test(cat.name);
-        }
-        if (currentLang === 'ko') {
-          return /[\uac00-\ud7af]/.test(cat.name) || !/[\u4e00-\u9fa5]/.test(cat.name);
-        }
-        if (currentLang === 'ja') {
-          return /[\u3040-\u30ff]/.test(cat.name) || !/[\u4e00-\u9fa5]/.test(cat.name);
-        }
-        return /[\u4e00-\u9fa5]/.test(cat.name);
-      });
-
-      // Recalculate category counts based on language
-      categories = categories.map(function(cat) {
-        var posts = cat.posts.toArray().filter(function(post) {
-          if (currentLang === 'en') {
-            return post.lang === 'en';
-          }
-          if (currentLang === 'ko') {
-            return post.lang === 'ko';
-          }
-          if (currentLang === 'ja') {
-            return post.lang === 'ja';
-          }
-          return post.lang !== 'en' && post.lang !== 'ko' && post.lang !== 'ja';
-        });
-        return {
-          name: cat.name,
-          path: cat.path,
-          length: posts.length,
-          posts: posts
-        };
-      });
-
-      // Remove categories with zero posts
-      categories = categories.filter(function(cat) {
-        return cat.length > 0;
-      });
+      // Filter categories by language using helper
+      var categories = filter_categories_by_lang(site.categories, currentLang);
 
       categories.forEach(function(cat) {
     %>

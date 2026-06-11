@@ -4,19 +4,7 @@
 
   // Get posts for this language
   var allPosts = (locals && locals.posts ? locals.posts.toArray() : (site.posts ? site.posts.toArray() : []));
-  var filteredPosts = allPosts.filter(function(post) {
-    if (currentLang === 'en') {
-      return post.lang === 'en';
-    }
-    if (currentLang === 'ko') {
-      return post.lang === 'ko';
-    }
-    if (currentLang === 'ja') {
-      return post.lang === 'ja';
-    }
-    // 中文页面：只显示中文文章（非英文、非韩文、非日文）
-    return post.lang !== 'en' && post.lang !== 'ko' && post.lang !== 'ja';
-  });
+  var filteredPosts = filter_posts_by_lang(allPosts, currentLang);
   // Sort by date descending (newest first)
   var posts = filteredPosts.sort(function(a, b) {
     return b.date - a.date;

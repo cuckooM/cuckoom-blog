@@ -3,50 +3,9 @@
     <h3 class="widget-title"><%= __('categories') %></h3>
     <div class="widget">
       <%
-        // Get current language from helper
         var currentLang = page.lang || "zh-CN";
-
-        // Filter categories by language
-        var filteredCategories = site.categories.toArray().filter(function(cat) {
-          if (currentLang === 'en') {
-            return !/[\u4e00-\u9fa5]/.test(cat.name) && !/[\uac00-\ud7af]/.test(cat.name) && !/[\u3040-\u30ff]/.test(cat.name);
-          }
-          if (currentLang === 'ko') {
-            return /[\uac00-\ud7af]/.test(cat.name);
-          }
-          if (currentLang === 'ja') {
-            return /[\u3040-\u30ff]/.test(cat.name);
-          }
-          return /[\u4e00-\u9fa5]/.test(cat.name);
-        });
-
-        // Recalculate category counts based on language
-        filteredCategories = filteredCategories.map(function(cat) {
-          var posts = cat.posts.toArray().filter(function(post) {
-            if (currentLang === 'en') {
-              return post.lang === 'en';
-            }
-            if (currentLang === 'ko') {
-              return post.lang === 'ko';
-            }
-            if (currentLang === 'ja') {
-              return post.lang === 'ja';
-            }
-            return post.lang !== 'en' && post.lang !== 'ko' && post.lang !== 'ja';
-          });
-          return {
-            name: cat.name,
-            path: cat.path,
-            length: posts.length
-          };
-        });
-
-        // Remove categories with zero posts
-        filteredCategories = filteredCategories.filter(function(cat) {
-          return cat.length > 0;
-        });
+        var filteredCategories = filter_categories_by_lang(site.categories, currentLang);
       %>
-
       <% if (filteredCategories.length > 0) { %>
         <ul class="category-list">
           <% filteredCategories.forEach(function(category){ %>

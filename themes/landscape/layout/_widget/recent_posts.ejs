@@ -1,31 +1,8 @@
 <%
-  // Get current language from helper
   var currentLang = page.lang || "zh-CN";
-%>
-<%
-  // Get all posts from the site
   var allPosts = site.posts.toArray();
-
-  // Filter posts by language based on the current page context
-  var filteredPosts = allPosts.filter(function(post) {
-    var postLang = post.lang || 'zh-CN'; // Default to Chinese if no lang specified
-    if (currentLang === 'en') {
-      return postLang === 'en';
-    }
-    if (currentLang === 'ko') {
-      return postLang === 'ko';
-    }
-    if (currentLang === 'ja') {
-      return postLang === 'ja';
-    }
-    return postLang !== 'en' && postLang !== 'ko' && postLang !== 'ja';
-  });
-
-  // Sort by date (most recent first) and limit
-  var sortedPosts = filteredPosts.sort(function(a, b) {
-    return b.date - a.date;
-  });
-
+  var filteredPosts = filter_posts_by_lang(allPosts, currentLang);
+  var sortedPosts = filteredPosts.sort(function(a, b) { return b.date - a.date; });
   var limitedPosts = sortedPosts.slice(0, theme.recent_posts_limits || 5);
 %>
 <% if (limitedPosts.length){ %>

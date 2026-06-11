@@ -3,20 +3,11 @@
 
   // Get posts for this tag
   var allPosts = (locals && locals.posts ? locals.posts.toArray() : (site.posts ? site.posts.toArray() : []));
-  var filteredPosts = allPosts.filter(function(post) {
-      var langMatch;
-      if (currentLang === 'en') {
-        langMatch = post.lang === 'en';
-      } else if (currentLang === 'ko') {
-        langMatch = post.lang === 'ko';
-      } else if (currentLang === 'ja') {
-        langMatch = post.lang === 'ja';
-      } else {
-        langMatch = post.lang !== 'en' && post.lang !== 'ko' && post.lang !== 'ja';
-      }
-      return langMatch && post.tags && post.tags.some(function(t) { return t.name === page.tag; });
-    });
-  %>
+  var langFiltered = filter_posts_by_lang(allPosts, currentLang);
+  var filteredPosts = langFiltered.filter(function(post) {
+    return post.tags && post.tags.some(function(t) { return t.name === page.tag; });
+  });
+%>
 
   <!-- Simplified Hero -->
   <section class="hero-section hero-simple">

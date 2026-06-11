@@ -2,9 +2,8 @@
   <%
     var currentLang = page.lang || "zh-CN";
   %>
-  <% for (var i in theme.menu){ %>
-    <% if (/^[\u4e00-\u9fa5]/.test(i)) { %>
-      <a href="<%- url_with_lang(theme.menu[i], currentLang) %>" class="mobile-nav-link"><%= i %></a>
-    <% } %>
-  <% } %>
+  <% var menuCategories = filter_categories_by_lang(site.categories, currentLang); %>
+  <% menuCategories.forEach(function(cat) { %>
+    <a href="<%- url_with_lang(cat.path, currentLang) %>" class="mobile-nav-link"><%= cat.name %></a>
+  <% }); %>
 </nav>
