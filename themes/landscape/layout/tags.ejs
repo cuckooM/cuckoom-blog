@@ -1,8 +1,8 @@
 <%
   var currentLang = page.lang || "zh-CN";
 
-  var pageTitle = currentLang === 'en' ? 'Tags' : currentLang === 'ko' ? '태그' : currentLang === 'ja' ? 'タグ' : '标签';
-  var pageDesc = currentLang === 'en' ? 'Browse posts by tag' : currentLang === 'ko' ? '태그별로 글 찾아보기' : currentLang === 'ja' ? 'タグで記事を探す' : '按标签浏览文章';
+  var pageTitle = __('tags_page_title');
+  var pageDesc = __('tags_page_desc');
 %>
 
 <!-- Simplified Hero -->
@@ -86,15 +86,7 @@
     </div>
   <% } else { %>
     <div class="tags-empty">
-      <% if (currentLang === 'en') { %>
-      <p>No tags yet.</p>
-      <% } else if (currentLang === 'ko') { %>
-      <p>아직 태그가 없습니다.</p>
-      <% } else if (currentLang === 'ja') { %>
-      <p>まだタグがありません。</p>
-      <% } else { %>
-      <p>暂无标签。</p>
-      <% } %>
+      <p><%= __('no_tags') %></p>
     </div>
   <% } %>
 </div>

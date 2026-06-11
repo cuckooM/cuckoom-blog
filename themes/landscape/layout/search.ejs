@@ -1,9 +1,9 @@
 <%
   var currentLang = page.lang || "zh-CN";
 
-  var pageTitle = currentLang === 'en' ? 'Search' : currentLang === 'ko' ? '검색' : currentLang === 'ja' ? '検索' : '搜索';
-  var placeholder = currentLang === 'en' ? 'Search articles...' : currentLang === 'ko' ? '글 검색...' : currentLang === 'ja' ? '記事を検索...' : '输入关键词搜索文章...';
-  var emptyMsg = currentLang === 'en' ? 'No results found. Try different keywords.' : currentLang === 'ko' ? '결과가 없습니다. 다른 키워드를 사용해 보세요.' : currentLang === 'ja' ? '結果が見つかりませんでした。別のキーワードをお試しください。' : '没有找到结果，试试其他关键词。';
+  var pageTitle = __('search_title');
+  var placeholder = __('search_placeholder_long');
+  var emptyMsg = __('search_empty');
 %>
 
 <!-- Simplified Hero -->
@@ -80,7 +80,7 @@
       var html = '';
       if (results.length === 0) {
         html = '<div class="search-page-empty"><p>' +
-          (currentLang === 'en' ? 'No results found.' : currentLang === 'ko' ? '결과가 없습니다.' : currentLang === 'ja' ? '結果が見つかりませんでした。' : '没有找到结果') + '</p></div>';
+          '<%= __('search_no_results') %>' + '</p></div>';
       } else {
         results.forEach(function(item) {
           html += '<a href="' + item.url + '" class="search-page-result-item">' +
@@ -116,7 +116,7 @@
       if (!query) {
         $('#search-page-results').html(
           '<div class="search-page-empty"><p>' +
-          (currentLang === 'en' ? 'Enter keywords to search...' : currentLang === 'ko' ? '검색어를 입력하세요...' : currentLang === 'ja' ? '検索キーワードを入力...' : '输入关键词搜索...') + '</p></div>'
+          '<%= __('search_enter_keywords') %>' + '</p></div>'
         );
         return;
       }

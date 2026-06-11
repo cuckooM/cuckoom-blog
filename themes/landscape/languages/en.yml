@@ -17,3 +17,32 @@ powered_by: Powered by
 rss_feed: RSS Feed
 category: Category
 tag: Tag
+menu_title: Menu
+sidebar_title: Sidebar
+theme_toggle: Toggle Theme
+search_placeholder: "Search..."
+no_results: No results found
+read_more: "Read More &rarr;"
+no_posts_category: No posts in this category.
+no_posts_tag: No posts with this tag.
+no_posts_archive: No posts yet.
+posts_count: posts
+close: Close
+all_posts_desc: All posts organized by date
+hero_subtitle: Sharing Tech Practices & Solutions
+prev_page: Prev
+next_page: Next
+search_title: Search
+search_placeholder_long: Search articles...
+search_empty: "No results found. Try different keywords."
+search_no_results: No results found.
+search_enter_keywords: Enter keywords to search...
+tags_page_title: Tags
+tags_page_desc: Browse posts by tag
+no_tags: No tags yet.
+categories_page_title: Categories
+categories_page_desc: Browse posts by category
+no_categories: No categories yet.
+no_posts: No posts yet. Check back soon!
+post_prev: Previous
+post_next: Next

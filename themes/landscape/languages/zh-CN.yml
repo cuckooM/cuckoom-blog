@@ -17,3 +17,32 @@ powered_by: Powered by
 rss_feed: RSS 订阅
 category: 目录
 tag: 标签
+menu_title: 菜单
+sidebar_title: 侧边栏
+theme_toggle: 切换主题
+search_placeholder: "搜索..."
+no_results: 没有找到结果
+read_more: "阅读更多 &rarr;"
+no_posts_category: 暂无相关文章。
+no_posts_tag: 暂无相关文章。
+no_posts_archive: 暂无文章。
+posts_count: 篇文章
+close: 关闭
+all_posts_desc: 按日期排列的所有文章
+hero_subtitle: 分享技术实践与解决方案
+prev_page: 上一页
+next_page: 下一页
+search_title: 搜索
+search_placeholder_long: 输入关键词搜索文章...
+search_empty: 没有找到结果，试试其他关键词。
+search_no_results: 没有找到结果
+search_enter_keywords: 输入关键词搜索...
+tags_page_title: 标签
+tags_page_desc: 按标签浏览文章
+no_tags: 暂无标签。
+categories_page_title: 分类
+categories_page_desc: 按分类浏览文章
+no_categories: 暂无分类。
+no_posts: 暂无文章，敬请期待！
+post_prev: 上一篇
+post_next: 下一篇

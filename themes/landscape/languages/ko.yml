@@ -17,3 +17,32 @@ powered_by: Powered by
 rss_feed: RSS Feed
 category: 카테고리
 tag: 태그
+menu_title: 메뉴
+sidebar_title: 사이드바
+theme_toggle: 테마 전환
+search_placeholder: "검색..."
+no_results: 결과가 없습니다
+read_more: "더 읽기 &rarr;"
+no_posts_category: 이 카테고리에 글이 없습니다.
+no_posts_tag: 이 태그에 글이 없습니다.
+no_posts_archive: 글이 없습니다.
+posts_count: 개의 글
+close: 닫기
+all_posts_desc: 날짜별 정렬된 모든 글
+hero_subtitle: 기술 실천과 솔루션 공유
+prev_page: 이전
+next_page: 다음
+search_title: 검색
+search_placeholder_long: 글 검색...
+search_empty: 결과가 없습니다. 다른 키워드를 사용해 보세요.
+search_no_results: 결과가 없습니다.
+search_enter_keywords: 검색어를 입력하세요...
+tags_page_title: 태그
+tags_page_desc: 태그별로 글 찾아보기
+no_tags: 아직 태그가 없습니다.
+categories_page_title: 카테고리
+categories_page_desc: 카테고리별로 글 찾아보기
+no_categories: 아직 카테고리가 없습니다.
+no_posts: 아직 게시물이 없습니다. 곧 새로운 글이 올라옵니다!
+post_prev: 이전 글
+post_next: 다음 글

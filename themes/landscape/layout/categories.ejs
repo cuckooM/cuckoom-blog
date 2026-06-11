@@ -1,8 +1,8 @@
 <%
   var currentLang = page.lang || "zh-CN";
 
-  var pageTitle = currentLang === 'en' ? 'Categories' : currentLang === 'ko' ? '카테고리' : currentLang === 'ja' ? 'カテゴリー' : '分类';
-  var pageDesc = currentLang === 'en' ? 'Browse posts by category' : currentLang === 'ko' ? '카테고리별로 글 찾아보기' : currentLang === 'ja' ? 'カテゴリーで記事を探す' : '按分类浏览文章';
+  var pageTitle = __('categories_page_title');
+  var pageDesc = __('categories_page_desc');
 %>
 
 <!-- Simplified Hero -->
@@ -64,21 +64,13 @@
       <div class="category-card-icon">📚</div>
       <h3 class="category-card-name"><%= cat.name %></h3>
       <p class="category-card-count">
-        <%= cat.length %> <%= currentLang === 'en' ? 'posts' : currentLang === 'ko' ? '개의 글' : currentLang === 'ja' ? '記事' : '篇文章' %>
+        <%= cat.length %> <%= __('posts_count') %>
       </p>
     </a>
     <% }); %>
   <% } else { %>
     <div class="category-empty">
-      <% if (currentLang === 'en') { %>
-      <p>No categories yet.</p>
-      <% } else if (currentLang === 'ko') { %>
-      <p>아직 카테고리가 없습니다.</p>
-      <% } else if (currentLang === 'ja') { %>
-      <p>まだカテゴリーがありません。</p>
-      <% } else { %>
-      <p>暂无分类。</p>
-      <% } %>
+      <p><%= __('no_categories') %></p>
     </div>
   <% } %>
 </div>

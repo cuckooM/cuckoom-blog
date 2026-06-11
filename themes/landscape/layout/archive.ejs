@@ -46,13 +46,13 @@
     monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
   }
 
-  var pageTitle = currentLang === 'en' ? 'Archives' : currentLang === 'ko' ? '아카이브' : currentLang === 'ja' ? 'アーカイブ' : '归档';
+  var pageTitle = __('archive_a');
   if (currentYear && currentMonth) {
     pageTitle = monthNames[currentMonth - 1] + ' ' + currentYear;
   } else if (currentYear) {
     pageTitle = currentYear;
   }
-  var pageDesc = currentLang === 'en' ? 'All posts organized by date' : currentLang === 'ko' ? '날짜별 정렬된 모든 글' : currentLang === 'ja' ? '日付順に整理されたすべての記事' : '按日期排列的所有文章';
+  var pageDesc = __('all_posts_desc');
 %>
 
 <!-- Simplified Hero -->
@@ -98,15 +98,7 @@
 
   <% if (years.length === 0) { %>
   <div class="archive-empty">
-    <% if (currentLang === 'en') { %>
-    <p>No posts yet.</p>
-    <% } else if (currentLang === 'ko') { %>
-    <p>아직 글이 없습니다.</p>
-    <% } else if (currentLang === 'ja') { %>
-    <p>まだ記事がありません。</p>
-    <% } else { %>
-    <p>暂无文章。</p>
-    <% } %>
+    <p><%= __('no_posts_archive') %></p>
   </div>
   <% } %>
 </div>

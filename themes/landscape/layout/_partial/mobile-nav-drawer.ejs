@@ -1,8 +1,8 @@
 <!-- Mobile Navigation Drawer -->
 <%
   var currentLang = page.lang || "zh-CN";
-  var menuTitle = currentLang === 'en' ? 'Menu' : currentLang === 'ko' ? '메뉴' : currentLang === 'ja' ? 'メニュー' : '菜单';
-  var closeText = currentLang === 'en' ? 'Close' : currentLang === 'ko' ? '닫기' : currentLang === 'ja' ? '閉じる' : '关闭';
+  var menuTitle = __('menu_title');
+  var closeText = __('close');
 %>
 <div class="mobile-nav-drawer" id="mobile-nav-drawer">
   <div class="mobile-nav-header">
