@@ -261,9 +261,10 @@
       }
     });
 
-    // Sidebar drawer toggle
+    // Sidebar drawer toggle (with mobile nav mutual exclusion)
     $('#sidebar-toggle').on('click', function(e) {
       e.preventDefault();
+      closeMobileNavDrawer();  // Close mobile nav first
       toggleSidebarDrawer();
     });
 
@@ -336,11 +337,5 @@
       }
     });
 
-    // Sidebar toggle - close mobile nav drawer when opening sidebar (mutual exclusion)
-    $('#sidebar-toggle').on('click', function(e) {
-      e.preventDefault();
-      closeMobileNavDrawer();  // Close mobile nav first
-      toggleSidebarDrawer();
-    });
   });
 </script>
