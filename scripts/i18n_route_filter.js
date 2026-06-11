@@ -139,40 +139,60 @@ hexo.extend.filter.register('after_generate', function() {
   }
   
   // 处理 pages（如 about 页面）
-  // hexo-generator-i18n 生成的多语言页面路径有问题：
-  // - /en/about/ko-index.html 是韩语内容，但路径错误
-  // - /ko/about/index.html 是默认内容，但应该替换为韩语
+  // hexo-generator-i18n 在每个语言目录下生成了所有语言的 about 页面：
+  // - /ja/about/ja-index.html 是日语内容（正确标题和正文）
+  // - /ja/about/index.html 是默认中文内容（需要替换为日语内容）
+  // - /ko/about/ko-index.html 是韩语内容
+  // - /ko/about/index.html 是默认中文内容（需要替换为韩语内容）
   const pages = this.locals.get('pages');
-  const nonDefaultPages = pages.toArray().filter(page => page.lang && page.lang !== defaultLang);
+  const nonDefaultLangs = languages.filter(l => l !== defaultLang);
   
-  if (nonDefaultPages.length > 0) {
-    log.info(`[i18n_route] Found ${nonDefaultPages.length} non-default language pages to fix`);
+  if (nonDefaultLangs.length > 0) {
+    // 找出所有有非默认语言版本的页面目录
+    const nonDefaultPages = pages.toArray().filter(page => page.lang && page.lang !== defaultLang);
     
-    nonDefaultPages.forEach(page => {
-      // 获取页面目录名（如 about）
-      const pageDir = page.source.replace('source/', '').replace(/ko-.*\.md/, '').replace(/\/$/, '').replace('.md', '');
+    if (nonDefaultPages.length > 0) {
+      log.info(`[i18n_route] Found ${nonDefaultPages.length} non-default language pages to fix`);
       
-      // 查找 hexo-generator-i18n 生成的韩语内容（在错误位置）
-      const wrongPath = `en/${pageDir}/ko-index.html`;
+      // 获取所有页面目录（如 about）
+      const pageDirs = [...new Set(nonDefaultPages.map(page => {
+        return page.source.replace('source/', '').replace(/\/(ko|ja|en)-index\.md$/, '').replace(/\/$/, '');
+      }))];
       
-      // 正确的目标路径
-      const correctPath = `ko/${pageDir}/index.html`;
-      
-      if (route.routes[wrongPath]) {
-        const routeData = route.routes[wrongPath];
-        
-        // 在正确位置设置韩语内容
-        route.set(correctPath, {
-          data: routeData.data,
-          modified: routeData.modified
+      // 对每个非默认语言和页面目录，用正确语言的内容替换 index.html
+      nonDefaultLangs.forEach(lang => {
+        pageDirs.forEach(pageDir => {
+          const localizedFile = `${lang}/${pageDir}/${lang}-index.html`;
+          const indexFile = `${lang}/${pageDir}/index.html`;
+          
+          if (route.routes[localizedFile]) {
+            const routeData = route.routes[localizedFile];
+            
+            // 将本地化内容设置为 index.html
+            route.set(indexFile, {
+              data: routeData.data,
+              modified: routeData.modified
+            });
+            
+            // 删除本地化文件名（如 ja-index.html）
+            route.remove(localizedFile);
+            
+            log.info(`[i18n_route] Fixed page: ${localizedFile} → ${indexFile}`);
+          }
+          
+          // 删除其他语言的错误放置文件（如 /ko/about/ja-index.html）
+          nonDefaultLangs.forEach(otherLang => {
+            if (otherLang !== lang) {
+              const wrongFile = `${lang}/${pageDir}/${otherLang}-index.html`;
+              if (route.routes[wrongFile]) {
+                route.remove(wrongFile);
+                log.debug(`[i18n_route] Removed misplaced: ${wrongFile}`);
+              }
+            }
+          });
         });
-        
-        // 删除错误位置的文件
-        route.remove(wrongPath);
-        
-        log.info(`[i18n_route] Fixed page: ${wrongPath} → ${correctPath}`);
-      }
-    });
+      });
+    }
   }
 });
 
