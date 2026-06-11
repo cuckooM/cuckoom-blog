@@ -11,7 +11,7 @@
 .mobile-menu-toggle
   display: none  // Hidden by default, shown only on mobile
 
-  @media {mq-mobile}
+  @media mq-mobile
     display: flex
     align-items: center
     justify-content: center
@@ -36,14 +36,14 @@
       font-size: 20px
 
 // === Legacy Mobile Nav (deprecated, kept for backward compat) ===
-@media {mq-mobile}
+@media mq-mobile
   #mobile-nav
     // Legacy simple nav - now replaced by drawer system
     // Kept minimal for any fallback scenarios
     display: none  // Hidden, using drawer instead
 
 // === Mobile-specific Global Adjustments ===
-@media {mq-mobile}
+@media mq-mobile
   // Adjust outer container padding
   .outer
     padding: 0 var(--space-md, 16px)
@@ -54,7 +54,7 @@
       display: none  // Hide desktop nav links
 
 // === Extra Small Screen (xs: ≤374px) ===
-@media {mq-xs}
+@media mq-xs
   .outer
     padding: 0 var(--space-sm, 8px)
 
