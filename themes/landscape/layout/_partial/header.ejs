@@ -220,13 +220,7 @@
       $('.lang-switcher-btn').attr('aria-expanded', 'false');
     });
 
-    // Close on Escape key
-    $(document).on('keydown', function(e) {
-      if (e.key === 'Escape') {
-        $('.lang-switcher').removeClass('open');
-        $('.lang-switcher-btn').attr('aria-expanded', 'false');
-      }
-    });
+    // ESC key handler - consolidated (see unified handler at end)
 
     // Search functionality - submit redirects to search page
     $('body').on('submit', '.search-form', function(e) {
@@ -278,13 +272,7 @@
       closeSidebarDrawer();
     });
 
-    // Close drawer on Esc key
-    $(document).on('keydown', function(e) {
-      if (e.key === 'Escape') {
-        closeSidebarDrawer();
-        $('#search-form-wrap').removeClass('on');
-      }
-    });
+    // ESC key handler - consolidated (see unified handler at end)
 
     // Close drawer when a link inside is clicked
     $('.sidebar-drawer a').on('click', function() {
@@ -328,12 +316,15 @@
       closeMobileNavDrawer();
     });
 
-    // ESC key handler - update to close both drawers
+    // Unified ESC key handler - closes all drawers/panels
     $(document).on('keydown', function(e) {
       if (e.key === 'Escape') {
         closeMobileNavDrawer();
         closeSidebarDrawer();
         $('#search-form-wrap').removeClass('on');
+        $('#search-input').blur();
+        $('.lang-switcher').removeClass('open');
+        $('.lang-switcher-btn').attr('aria-expanded', 'false');
       }
     });
 

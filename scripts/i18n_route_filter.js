@@ -9,11 +9,12 @@
  * 3. 识别英文文章，移动其路由到 /en/ 路径，删除根路径路由
  * 
  * 符合 Hexo 最佳实践：使用 Filter Hook 而非覆盖 Generator
+ * 使用 Hexo 公开 Route API（route.list/get/set/remove），避免直接操作内部 route.routes
  */
 
 'use strict';
 
-hexo.extend.filter.register('after_generate', function() {
+hexo.extend.filter.register('after_generate', async function() {
   const config = this.config;
   const route = this.route;
   const log = this.log || console;
@@ -51,8 +52,8 @@ hexo.extend.filter.register('after_generate', function() {
     const langPrefix = post.lang + '/';
     const newPath = route.format(langPrefix + originalPath);
     
-    // 检查原始路由是否存在
-    if (route.routes[formattedPath]) {
+    // 检查原始路由是否存在（使用公开 API route.list）
+    if (route.list().includes(formattedPath)) {
       routesToMove.push({
         originalPath: formattedPath,
         newPath,
@@ -68,24 +69,36 @@ hexo.extend.filter.register('after_generate', function() {
   
   log.info(`[i18n_route] Moving ${routesToMove.length} routes...`);
   
-  // 移动路由
-  routesToMove.forEach(({ originalPath, newPath }) => {
-    // 获取原始路由数据
-    const routeData = route.routes[originalPath];
+  // 从路由流中读取内容的辅助函数
+  function readRouteContent(path) {
+    return new Promise((resolve, reject) => {
+      const stream = route.get(path);
+      if (!stream) {
+        resolve(null);
+        return;
+      }
+      const chunks = [];
+      stream.on('data', chunk => chunks.push(chunk));
+      stream.on('end', () => resolve(Buffer.concat(chunks)));
+      stream.on('error', reject);
+    });
+  }
+  
+  // 移动路由（使用公开 API route.set 和 route.remove）
+  for (const { originalPath, newPath } of routesToMove) {
+    // 通过公开 API route.get 读取原始路由内容
+    const content = await readRouteContent(originalPath);
     
-    if (routeData) {
-      // 创建新路由（在语言前缀路径）
-      route.set(newPath, {
-        data: routeData.data,
-        modified: routeData.modified
-      });
+    if (content !== null) {
+      // 创建新路由（在语言前缀路径），使用公开 API route.set
+      route.set(newPath, content);
       
-      // 删除旧路由（在根路径）
+      // 删除旧路由（在根路径），使用公开 API route.remove
       route.remove(originalPath);
       
       log.debug(`[i18n_route] Moved: ${originalPath} → ${newPath}`);
     }
-  });
+  }
   
   log.info(`[i18n_route] Successfully relocated ${routesToMove.length} non-default language posts`);
   
@@ -113,8 +126,8 @@ hexo.extend.filter.register('after_generate', function() {
     const totalPages = Math.ceil(count / perPage) || 1;
     const langPrefix = lang === defaultLang ? '' : lang + '/';
     
-    // 获取该语言的所有分页路由
-    const pageRoutes = Object.keys(route.routes).filter(path => {
+    // 获取该语言的所有分页路由（使用公开 API route.list）
+    const pageRoutes = route.list().filter(path => {
       // 匹配分页路径：page/2/, page/3/ 或 en/page/2/, ko/page/2/ 等
       const pagePattern = langPrefix + 'page/';
       return path.startsWith(pagePattern);
@@ -160,38 +173,40 @@ hexo.extend.filter.register('after_generate', function() {
       }))];
       
       // 对每个非默认语言和页面目录，用正确语言的内容替换 index.html
-      nonDefaultLangs.forEach(lang => {
-        pageDirs.forEach(pageDir => {
+      for (const lang of nonDefaultLangs) {
+        for (const pageDir of pageDirs) {
           const localizedFile = `${lang}/${pageDir}/${lang}-index.html`;
           const indexFile = `${lang}/${pageDir}/index.html`;
           
-          if (route.routes[localizedFile]) {
-            const routeData = route.routes[localizedFile];
+          // 使用公开 API route.list 检查路由是否存在
+          if (route.list().includes(localizedFile)) {
+            // 通过公开 API route.get 读取本地化内容
+            const content = await readRouteContent(localizedFile);
             
-            // 将本地化内容设置为 index.html
-            route.set(indexFile, {
-              data: routeData.data,
-              modified: routeData.modified
-            });
-            
-            // 删除本地化文件名（如 ja-index.html）
-            route.remove(localizedFile);
-            
-            log.info(`[i18n_route] Fixed page: ${localizedFile} → ${indexFile}`);
+            if (content !== null) {
+              // 将本地化内容设置为 index.html（使用公开 API route.set）
+              route.set(indexFile, content);
+              
+              // 删除本地化文件名（如 ja-index.html，使用公开 API route.remove）
+              route.remove(localizedFile);
+              
+              log.info(`[i18n_route] Fixed page: ${localizedFile} → ${indexFile}`);
+            }
           }
           
           // 删除其他语言的错误放置文件（如 /ko/about/ja-index.html）
-          nonDefaultLangs.forEach(otherLang => {
+          for (const otherLang of nonDefaultLangs) {
             if (otherLang !== lang) {
               const wrongFile = `${lang}/${pageDir}/${otherLang}-index.html`;
-              if (route.routes[wrongFile]) {
+              // 使用公开 API route.list 检查路由是否存在
+              if (route.list().includes(wrongFile)) {
                 route.remove(wrongFile);
                 log.debug(`[i18n_route] Removed misplaced: ${wrongFile}`);
               }
             }
-          });
-        });
-      });
+          }
+        }
+      }
     }
   }
 });
