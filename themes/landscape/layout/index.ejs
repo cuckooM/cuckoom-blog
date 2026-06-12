@@ -15,8 +15,8 @@
 <section class="hero-section hero-full">
   <div class="hero-content">
     <h1 class="hero-title"><%= title_i18n() %></h1>
-    <% if (theme.subtitle || config.subtitle) { %>
-    <p class="hero-subtitle"><%= theme.subtitle || config.subtitle %></p>
+    <% if (theme.subtitle || config.subtitle || __('subtitle') !== 'subtitle') { %>
+    <p class="hero-subtitle"><%= __('subtitle') %></p>
     <% } %>
     <p class="hero-description"><%= __('hero_subtitle') %></p>
   </div>
