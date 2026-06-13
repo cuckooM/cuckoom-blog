@@ -1,13 +1,9 @@
 <%
   // Get current language from page.lang
   var currentLang = page.lang || "zh-CN";
-  var langMap = {
-    'zh-CN': { label: '中文', path: '/' },
-    'en': { label: 'English', path: '/en/' },
-    'ko': { label: '한국어', path: '/ko/' },
-    'ja': { label: '日本語', path: '/ja/' }
-  };
-  var currentLangData = langMap[currentLang];
+  // Read supported languages from centralized config via helper
+  var langMap = get_supported_languages();
+  var currentLangData = langMap[currentLang] || { label: currentLang, path: '/' + currentLang + '/' };
 %>
 <div class="lang-switcher">
   <button class="lang-switcher-btn" aria-label="选择语言" aria-expanded="false">

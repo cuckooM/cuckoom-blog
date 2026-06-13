@@ -150,7 +150,7 @@ hexo.extend.filter.register('after_generate', async function() {
   if (removedPages > 0) {
     log.info(`[i18n_route] Removed ${removedPages} excess pagination page(s)`);
   }
-  
+
   // 处理 pages（如 about 页面）
   // hexo-generator-i18n 在每个语言目录下生成了所有语言的 about 页面：
   // - /ja/about/ja-index.html 是日语内容（正确标题和正文）
@@ -215,62 +215,4 @@ hexo.extend.filter.register('after_generate', async function() {
       }
     }
   }
-});
-
-// 注册 helper 函数：根据当前语言过滤文章列表
-hexo.extend.helper.register('filter_posts_by_lang', function(posts, currentLang) {
-  const languages = this.config.language;
-  const defaultLang = (Array.isArray(languages) ? languages[0] : languages) || 'zh-CN';
-  return posts.filter(post => {
-    const postLang = post.lang || defaultLang;
-    return postLang === currentLang;
-  });
-});
-
-// 注册 helper 函数：生成带语言前缀的 URL
-hexo.extend.helper.register('url_with_lang', function(path, currentLang) {
-  const languages = this.config.language;
-  const defaultLang = (Array.isArray(languages) ? languages[0] : languages) || 'zh-CN';
-  if (currentLang === defaultLang) {
-    return this.url_for(path);
-  }
-  return this.url_for(currentLang + '/' + path);
-});
-
-// 注册 helper 函数：获取文章的正确 URL（考虑语言前缀）
-hexo.extend.helper.register('post_url_i18n', function(post) {
-  const languages = this.config.language;
-  const defaultLang = (Array.isArray(languages) ? languages[0] : languages) || 'zh-CN';
-  const postLang = post.lang || defaultLang;
-  
-  // 英文文章：URL 带 /en/ 前缀
-  if (postLang !== defaultLang) {
-    return this.url_for(postLang + '/' + post.path);
-  }
-  
-  // 默认语言文章：URL 无前缀
-  return this.url_for(post.path);
-});
-
-// 注册 helper 函数：获取同语言的文章导航（上一篇/下一篇）
-// 解决跨语言导航问题
-hexo.extend.helper.register('get_i18n_post_nav', function(post) {
-  const languages = this.config.language;
-  const defaultLang = (Array.isArray(languages) ? languages[0] : languages) || 'zh-CN';
-  const postLang = post.lang || defaultLang;
-  
-  // 获取所有文章并按日期排序（与 Hexo 默认行为一致）
-  const posts = this.site.posts.sort('-date').toArray();
-  
-  // 过滤出同语言的文章
-  const sameLangPosts = posts.filter(p => (p.lang || defaultLang) === postLang);
-  
-  // 找到当前文章在过滤列表中的索引
-  const currentIndex = sameLangPosts.findIndex(p => p._id === post._id);
-  
-  // 返回同语言的上一篇和下一篇
-  return {
-    prev: currentIndex > 0 ? sameLangPosts[currentIndex - 1] : null,
-    next: currentIndex < sameLangPosts.length - 1 ? sameLangPosts[currentIndex + 1] : null
-  };
 });

@@ -35,13 +35,19 @@ function createI18nIndexGenerator(lang) {
   };
 }
 
-// 注册英文首页生成器
-hexo.extend.generator.register('i18n_index_en', createI18nIndexGenerator('en'));
+// 从集中配置读取支持的语言，自动注册首页生成器
+// 跳过默认语言（第一个语言），仅为非默认语言注册
+const supportedLanguages = hexo.config.supported_languages || {};
+const allLanguages = hexo.config.language;
+const languages = Array.isArray(allLanguages) ? allLanguages : [allLanguages || 'zh-CN'];
+const defaultLang = languages[0];
 
-// 注册韩语首页生成器
-hexo.extend.generator.register('i18n_index_ko', createI18nIndexGenerator('ko'));
+const langsToRegister = Object.keys(supportedLanguages).length > 0
+  ? Object.keys(supportedLanguages).filter(l => l !== defaultLang)
+  : languages.filter(l => l !== defaultLang);
 
-// 注册日语首页生成器
-hexo.extend.generator.register('i18n_index_ja', createI18nIndexGenerator('ja'));
+langsToRegister.forEach(lang => {
+  hexo.extend.generator.register('i18n_index_' + lang, createI18nIndexGenerator(lang));
+});
 
-hexo.log.info('[i18n_index] Registered index generators for en, ko, ja');
+hexo.log.info(`[i18n_index] Registered index generators for: ${langsToRegister.join(', ')}`);
