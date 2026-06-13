@@ -3,6 +3,7 @@ node_modules/
 public/
 .deploy*/
 .db.json
+db.json
 
 # Editor
 .DS_Store

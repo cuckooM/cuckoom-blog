@@ -39,6 +39,22 @@ i18n:
   type: [page]
   generator: [archive, category, tag, index]
 
+# Supported languages configuration (centralized)
+# First item is the default language
+supported_languages:
+  zh-CN:
+    label: 中文
+    path: /
+  en:
+    label: English
+    path: /en/
+  ko:
+    label: 한국어
+    path: /ko/
+  ja:
+    label: 日本語
+    path: /ja/
+
 skip_render:
 
 # Writing
@@ -61,10 +77,6 @@ highlight:
   tab_replace: ''
   wrap: true
   hljs: false
-prismjs:
-  preprocess: true
-  line_number: true
-  tab_replace: ''
 
 # Home page setting
 # path: Root path for your blogs index page. (default = '')

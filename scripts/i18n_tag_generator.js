@@ -127,14 +127,18 @@ function createI18nCategoryGenerator(lang) {
   };
 }
 
-// 注册英文标签和分类生成器
-hexo.extend.generator.register('i18n_tag_en', createI18nTagGenerator('en'));
-hexo.extend.generator.register('i18n_category_en', createI18nCategoryGenerator('en'));
+// 从集中配置读取支持的语言，自动注册标签和分类生成器
+// 跳过默认语言（第一个语言），仅为非默认语言注册
+const supportedLanguages = hexo.config.supported_languages || {};
+const allLanguages = hexo.config.language;
+const languages = Array.isArray(allLanguages) ? allLanguages : [allLanguages || 'zh-CN'];
+const defaultLang = languages[0];
 
-// 注册韩语标签和分类生成器
-hexo.extend.generator.register('i18n_tag_ko', createI18nTagGenerator('ko'));
-hexo.extend.generator.register('i18n_category_ko', createI18nCategoryGenerator('ko'));
+const langsToRegister = Object.keys(supportedLanguages).length > 0
+  ? Object.keys(supportedLanguages).filter(l => l !== defaultLang)
+  : languages.filter(l => l !== defaultLang);
 
-// 注册日语标签和分类生成器
-hexo.extend.generator.register('i18n_tag_ja', createI18nTagGenerator('ja'));
-hexo.extend.generator.register('i18n_category_ja', createI18nCategoryGenerator('ja'));
+langsToRegister.forEach(lang => {
+  hexo.extend.generator.register('i18n_tag_' + lang, createI18nTagGenerator(lang));
+  hexo.extend.generator.register('i18n_category_' + lang, createI18nCategoryGenerator(lang));
+});
