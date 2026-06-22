@@ -138,18 +138,6 @@
       color: var(--color-primary)
       background: rgba(0, 0, 0, 0.05)
 
-// Mobile menu toggle (must be after .nav-icon to override display property)
-.mobile-menu-toggle
-  display: none
-
-  @media screen and (max-width: 767px)
-    display: block
-    color: #FFFFFF
-    font-size: 20px
-
-    .site-header.scrolled &
-      color: var(--color-text-primary)
-
 // Theme toggle button
 .theme-toggle-btn
   display: inline-flex
@@ -288,12 +276,8 @@
 // Mobile styles for language dropdown
 @media screen and (max-width: 767px)
   .lang-dropdown
-    right: auto
-    left: 50%
-    transform: translateX(-50%) translateY(-8px)
-
-  .lang-switcher.open .lang-dropdown
-    transform: translateX(-50%) translateY(0)
+    right: 0
+    left: auto
 
 // Search form (expandable)
 .search-form-wrap

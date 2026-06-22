@@ -208,6 +208,12 @@
     border-top: 1px solid var(--color-border)
     margin: var(--space-xl) 0
 
+  // Mobile table overflow handling
+  @media screen and (max-width: 767px)
+    table
+      display: block
+      overflow-x: auto
+
 // === Search Page ===
 .search-page-container
   max-width: var(--content-max-width)
