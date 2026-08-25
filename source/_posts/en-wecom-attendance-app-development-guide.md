@@ -1,215 +1,216 @@
 ---
-title: "企业微信应用开发完全指南：以考勤系统为例"
+title: "Complete Guide to WeCom App Development: Building an Attendance System"
 date: 2026-07-09 21:00:00
 tags:
-  - 企业微信
-  - 小程序开发
-  - 考勤系统
-  - API对接
-  - 移动端开发
+  - WeCom
+  - Mini Program Development
+  - Attendance System
+  - API Integration
+  - Mobile Development
 categories:
-  - 技术实践
+  - Technical Practice
+lang: en
 ---
 
-企业微信（WeCom）作为企业级通讯与协作平台，提供了丰富的开放 API，支持企业自建应用、第三方应用和代开发应用。随着企业微信小程序（WeCom Mini Program）能力的不断完善，越来越多的企业选择以小程序模式开发内部应用，获得更接近原生的体验和更强的设备能力调用。
+WeCom (Enterprise WeChat), as an enterprise-level communication and collaboration platform, provides rich open APIs supporting enterprise self-built applications, third-party applications, and proxy-developed applications. As the capabilities of WeCom Mini Programs continue to evolve, more and more enterprises choose to develop internal applications in mini program mode to achieve a more native-like experience and stronger device capability access.
 
-本文以考勤系统为案例，**以企业微信小程序模式为主线**，系统讲解应用开发全流程，涵盖小程序注册创建、项目结构、身份认证、地理定位打卡、拍照打卡、扫码打卡、后端 API 对接、消息推送、安全设计等关键环节，同时对比说明 H5 应用模式的差异，帮助研发团队选型与落地。
+This article uses an attendance system as a case study, **with WeCom Mini Program mode as the main thread**, to systematically explain the entire application development process. It covers mini program registration and creation, project structure, identity authentication, geolocation check-in, photo check-in, QR code scan check-in, backend API integration, message push, security design, and other key aspects. It also compares and explains the differences with the H5 application mode to help R&D teams with technology selection and implementation.
 
 <!-- more -->
 
-## 一、企业微信应用开发概述
+## I. Overview of WeCom App Development
 
-### 1.1 平台定位
+### 1.1 Platform Positioning
 
-企业微信开放平台为开发者提供了一套完整的 API 体系，覆盖通讯录管理、消息推送、OAuth 认证、JS-SDK、小程序、效率工具（打卡、审批、汇报）等能力。开发者可以基于这些 API 构建企业内部应用，也可以开发面向多企业的第三方应用。
+The WeCom Open Platform provides developers with a complete API system covering address book management, message push, OAuth authentication, JS-SDK, mini programs, efficiency tools (check-in, approval, reporting), and other capabilities. Developers can build enterprise internal applications based on these APIs, or develop third-party applications serving multiple enterprises.
 
-### 1.2 应用类型
+### 1.2 Application Types
 
-| 类型 | 适用场景 | 特点 |
+| Type | Applicable Scenario | Characteristics |
 |------|----------|------|
-| 自建应用 | 企业内部使用 | 仅本企业可见，配置灵活，API 权限由管理员分配 |
-| 第三方应用 | 面向多企业提供服务 | 需通过企业微信审核，支持多企业授权安装 |
-| 代开发应用 | 服务商代企业开发 | 企业授权给服务商，服务商代为开发和运维 |
+| Self-built App | Internal enterprise use | Visible only to the enterprise, flexible configuration, API permissions assigned by administrators |
+| Third-party App | Serving multiple enterprises | Requires WeCom review, supports multi-enterprise authorized installation |
+| Proxy-developed App | Developed by service provider on behalf of enterprise | Enterprise authorizes service provider, who develops and maintains on their behalf |
 
-本文以**自建应用**为主，这是最常见的开发场景。
+This article focuses on **self-built applications**, which is the most common development scenario.
 
-### 1.3 开发模式：小程序 vs H5
+### 1.3 Development Mode: Mini Program vs H5
 
-企业微信应用开发主要有两种模式：**小程序模式**和 **H5 应用模式**。两者各有优劣，选型时需要综合考量。
+WeCom application development has two main modes: **Mini Program mode** and **H5 Application mode**. Each has its pros and cons, and both should be considered comprehensively when selecting.
 
-| 对比维度 | 企业微信小程序 | H5 应用 |
+| Comparison Dimension | WeCom Mini Program | H5 Application |
 |----------|--------------|---------|
-| 运行环境 | 企业微信小程序运行时 | 企业微信内置浏览器 WebView |
-| 开发框架 | WXML/WXSS/JS（类微信小程序） | 任意前端框架（Vue/React 等） |
-| 性能体验 | 接近原生，启动快，页面切换流畅 | 依赖 WebView，首屏加载较慢 |
-| 离线能力 | 支持本地缓存，弱网可用 | 不支持离线，依赖网络 |
-| 设备能力 | 原生 API 直接调用（`wx.getLocation` 等） | 需通过 JS-SDK 间接调用，需签名验证 |
-| 身份认证 | `wx.qyLogin` 获取 code，静默无感 | OAuth2 网页授权跳转，需用户感知 |
-| 发布流程 | 需提交审核，版本管理严格 | 部署即生效，无需审核 |
-| 更新灵活性 | 需重新发布版本才能更新 | 随时热更新，灵活度高 |
-| 跨平台一致性 | 企业微信保证多端一致 | 需自行适配 iOS/Android WebView 差异 |
-| 适用场景 | 高频使用、对性能要求高、需调用设备能力 | 快速开发、频繁迭代、内容型应用 |
+| Runtime Environment | WeCom Mini Program runtime | WeCom built-in browser WebView |
+| Development Framework | WXML/WXSS/JS (similar to WeChat Mini Program) | Any frontend framework (Vue/React, etc.) |
+| Performance Experience | Near-native, fast startup, smooth page transitions | Depends on WebView, slower first-screen loading |
+| Offline Capability | Supports local cache, usable on weak networks | No offline support, network-dependent |
+| Device Capabilities | Native API direct calls (`wx.getLocation`, etc.) | Requires indirect calls via JS-SDK, needs signature verification |
+| Identity Authentication | `wx.qyLogin` to get code, silent and seamless | OAuth2 web authorization redirect, user-aware |
+| Publishing Process | Requires review submission, strict version management | Takes effect upon deployment, no review needed |
+| Update Flexibility | Requires re-publishing a version to update | Hot update anytime, high flexibility |
+| Cross-platform Consistency | WeCom guarantees multi-platform consistency | Need to adapt to iOS/Android WebView differences yourself |
+| Applicable Scenarios | High-frequency use, high performance requirements, device capability access needed | Rapid development, frequent iteration, content-oriented applications |
 
-**选型建议**：
+**Selection Recommendations:**
 
-- **考勤系统推荐小程序模式**：考勤是高频操作，对定位精度、拍照速度、启动速度有要求，小程序的原生 API 调用更直接、体验更好
-- **审批系统可用 H5 模式**：审批流程表单复杂、变动频繁，H5 的灵活度更高
-- **混合模式**：同一自建应用可同时配置小程序入口和 H5 入口，按场景引导用户
+- **Attendance system recommends Mini Program mode**: Attendance is a high-frequency operation with requirements for location accuracy, photo speed, and startup speed. Mini program's native API calls are more direct and provide a better experience
+- **Approval system can use H5 mode**: Approval workflow forms are complex and change frequently. H5 offers higher flexibility
+- **Hybrid mode**: The same self-built application can configure both mini program entry and H5 entry, guiding users by scenario
 
-本文以**小程序模式为主线**讲解考勤系统开发，关键节点对比说明 H5 模式的差异。
+This article uses **Mini Program mode as the main thread** to explain attendance system development, with comparisons to H5 mode differences at key points.
 
-## 二、开发环境搭建
+## II. Development Environment Setup
 
-### 2.1 注册企业微信与创建应用
+### 2.1 Registering WeCom and Creating an Application
 
-1. 访问 [企业微信管理后台](https://work.weixin.qq.com/)，注册企业微信（需管理员操作）
-2. 进入「应用管理」→「自建」→「创建应用」
-3. 填写应用名称、logo、可见范围（哪些部门/员工可用）
-4. 创建完成后获取三个关键参数：
+1. Visit [WeCom Admin Console](https://work.weixin.qq.com/) and register for WeCom (requires administrator operation)
+2. Go to "App Management" -> "Self-built" -> "Create App"
+3. Fill in the application name, logo, visible scope (which departments/employees can use it)
+4. After creation, obtain three key parameters:
 
-| 参数 | 说明 | 获取位置 |
+| Parameter | Description | Location |
 |------|------|----------|
-| `corpid` | 企业唯一标识 | 我的企业 → 企业信息 → 企业ID |
-| `agentid` | 应用唯一标识 | 应用管理 → 自建应用 → AgentId |
-| `secret` | 应用密钥 | 应用管理 → 自建应用 → Secret |
+| `corpid` | Enterprise unique identifier | My Enterprise -> Enterprise Info -> Enterprise ID |
+| `agentid` | Application unique identifier | App Management -> Self-built App -> AgentId |
+| `secret` | Application secret | App Management -> Self-built App -> Secret |
 
-> ⚠️ `secret` 是最高敏感凭证，**绝不能出现在前端代码中**，必须保存在服务端。
+> ⚠️ `secret` is the most sensitive credential. **It must never appear in frontend code** and must be stored on the server side.
 
-### 2.2 创建企业微信小程序
+### 2.2 Creating a WeCom Mini Program
 
-企业微信小程序的创建流程与微信小程序类似，但绑定的是企业微信主体：
+The creation process for a WeCom Mini Program is similar to a WeChat Mini Program, but it is bound to the WeCom entity:
 
-1. 登录 [企业微信管理后台](https://work.weixin.qq.com/) →「应用管理」→ 选择自建应用
-2. 在应用详情页找到「小程序」模块，点击「绑定/创建小程序」
-3. 企业微信支持两种方式关联小程序：
-   - **关联已有微信小程序**：复用微信开放平台注册的小程序，需同一主体
-   - **直接在企业微信内创建**：企业微信自建小程序，不依赖微信开放平台
-4. 创建后在小程序管理页获取 `wx_app_id`（小程序 AppID）
+1. Log in to [WeCom Admin Console](https://work.weixin.qq.com/) -> "App Management" -> Select self-built app
+2. On the app detail page, find the "Mini Program" module and click "Bind/Create Mini Program"
+3. WeCom supports two ways to associate a mini program:
+   - **Associate existing WeChat Mini Program**: Reuse a mini program registered on WeChat Open Platform, requires the same entity
+   - **Create directly within WeCom**: WeCom self-built mini program, does not depend on WeChat Open Platform
+4. After creation, obtain `wx_app_id` (Mini Program AppID) on the mini program management page
 
-**开发工具**：使用[微信开发者工具](https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html)进行开发和调试，选择「企业微信小程序」模式或通过企业微信插件关联。
+**Development Tools**: Use [WeChat Developer Tools](https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html) for development and debugging. Select "WeCom Mini Program" mode or associate through the WeCom plugin.
 
 ```bash
-# 下载微信开发者工具（命令行版，用于 CI）
-# 官方下载页：https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html
-# CLI 路径示例（macOS）：
+# Download WeChat Developer Tools (CLI version, for CI)
+# Official download page: https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html
+# CLI path example (macOS):
 /Applications/wechatwebdevtools.app/Contents/MacOS/cli \
   --login --project /path/to/miniprogram \
   --preview --qr-output /tmp/preview-qr.png
 ```
 
-### 2.3 配置可信域名与服务器域名
+### 2.3 Configuring Trusted Domains and Server Domains
 
-**H5 模式**需要配置可信域名（网页授权及 JS-SDK）：
-
-```
-应用管理 → 自建应用 → 开发者接口 → 网页授权及JS-SDK
-  → 设置可信域名：attendance.yourcompany.com
-  → 需下载域名归属校验文件，放置在域名根目录
-```
-
-**小程序模式**需要在管理后台配置「服务器域名」（request、uploadFile、downloadFile、socket）：
+**H5 mode** requires configuring trusted domains (web authorization and JS-SDK):
 
 ```
-应用管理 → 自建应用 → 开发者接口 → 小程序
-  → 服务器域名：
-    request 合法域名：https://api.attendance.yourcompany.com
-    uploadFile 合法域名：https://upload.attendance.yourcompany.com
-    downloadFile 合法域名：https://download.attendance.yourcompany.com
+App Management -> Self-built App -> Developer Interface -> Web Authorization & JS-SDK
+  -> Set Trusted Domain: attendance.yourcompany.com
+  -> Download domain ownership verification file and place it in the domain root directory
 ```
 
-域名必须满足：
-- 支持 HTTPS（生产环境，小程序强制要求）
-- 已通过 ICP 备案（中国大陆服务器）
-- request 域名不支持 IP 地址、localhost
-- 每月最多修改 50 次域名配置
+**Mini Program mode** requires configuring "Server Domains" in the admin console (request, uploadFile, downloadFile, socket):
 
-### 2.4 本地开发环境
+```
+App Management -> Self-built App -> Developer Interface -> Mini Program
+  -> Server Domains:
+    request valid domain: https://api.attendance.yourcompany.com
+    uploadFile valid domain: https://upload.attendance.yourcompany.com
+    downloadFile valid domain: https://download.attendance.yourcompany.com
+```
 
-小程序开发使用微信开发者工具，本地无需 HTTPS 域名穿透，但仍需后端服务：
+Domains must meet:
+- Support HTTPS (production environment, mandatory for mini programs)
+- ICP filing completed (mainland China servers)
+- request domain does not support IP addresses or localhost
+- Maximum 50 domain configuration changes per month
+
+### 2.4 Local Development Environment
+
+Mini program development uses WeChat Developer Tools. Local HTTPS domain penetration is not needed, but a backend service is still required:
 
 ```bash
-# 后端本地启动（SpringBoot）
+# Start backend locally (SpringBoot)
 cd ~/work/code/attendance-backend
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
 
-# 小程序开发者工具中配置：
-# - 开发设置 → 不校验合法域名（开发阶段勾选）
-# - AppID 填入企业微信小程序的 AppID
-# - 调试基础库选择最新稳定版
+# Configure in Mini Program Developer Tools:
+# - Development Settings -> Do not verify valid domains (check during development phase)
+# - AppID: enter the WeCom Mini Program AppID
+# - Debug base library: select the latest stable version
 ```
 
-H5 模式本地开发需要解决 HTTPS 和域名验证问题：
+H5 mode local development needs to resolve HTTPS and domain verification issues:
 
 ```bash
-# H5 模式：使用 ngrok 或 frp 进行内网穿透
+# H5 mode: Use ngrok or frp for internal network penetration
 ngrok http 8080
 
-# 或使用 mkcert 生成本地 HTTPS 证书
+# Or use mkcert to generate local HTTPS certificates
 mkcert -install
 mkcert localhost 127.0.0.1
 
-# 配置 hosts 文件（将可信域名指向本地）
+# Configure hosts file (point trusted domain to local)
 # /etc/hosts
 127.0.0.1 attendance.yourcompany.com
 ```
 
-开发阶段可以在企业微信后台配置可信域名为内网穿透地址，但需注意 token 安全。
+During development, you can configure the trusted domain as the internal network penetration address in the WeCom console, but be mindful of token security.
 
-## 三、小程序项目结构
+## III. Mini Program Project Structure
 
-企业微信小程序的项目结构与微信小程序一致，使用 TypeScript 开发可以获得更好的类型安全和开发体验。
+The project structure of a WeCom Mini Program is identical to a WeChat Mini Program. Using TypeScript for development provides better type safety and development experience.
 
-### 3.1 目录结构
+### 3.1 Directory Structure
 
 ```
 miniprogram/
-├── app.ts                    # 小程序入口逻辑
-├── app.json                  # 小程序全局配置
-├── app.wxss                  # 全局样式
-├── sitemap.json              # 搜索配置
-├── project.config.json       # 项目配置（AppID、编译设置等）
-├── tsconfig.json             # TypeScript 配置
-├── typings/                  # 类型声明
+├── app.ts                    # Mini program entry logic
+├── app.json                  # Mini program global configuration
+├── app.wxss                  # Global styles
+├── sitemap.json              # Search configuration
+├── project.config.json       # Project configuration (AppID, build settings, etc.)
+├── tsconfig.json             # TypeScript configuration
+├── typings/                  # Type declarations
 │   ├── index.d.ts
-│   └── wecom.d.ts            # 企业微信 API 类型补充
+│   └── wecom.d.ts            # WeCom API type supplements
 ├── pages/
-│   ├── index/                # 首页（考勤打卡）
+│   ├── index/                # Home page (attendance check-in)
 │   │   ├── index.ts
 │   │   ├── index.wxml
 │   │   ├── index.wxss
 │   │   └── index.json
-│   ├── records/              # 打卡记录
+│   ├── records/              # Check-in records
 │   │   ├── index.ts
 │   │   ├── index.wxml
 │   │   ├── index.wxss
 │   │   └── index.json
-│   ├── apply/                # 补卡申请
+│   ├── apply/                # Make-up check-in application
 │   │   ├── index.ts
 │   │   ├── index.wxml
 │   │   ├── index.wxss
 │   │   └── index.json
-│   └── scan/                 # 扫码打卡
+│   └── scan/                 # QR code scan check-in
 │       ├── index.ts
 │       ├── index.wxml
 │       ├── index.wxss
 │       └── index.json
 ├── components/
-│   ├── checkin-button/      # 打卡按钮组件
-│   └── location-card/       # 位置信息卡片
-├── services/                 # 业务服务层
-│   ├── auth.service.ts       # 认证服务
-│   ├── checkin.service.ts   # 打卡服务
-│   └── api.service.ts       # HTTP 请求封装
+│   ├── checkin-button/      # Check-in button component
+│   └── location-card/       # Location info card
+├── services/                 # Business service layer
+│   ├── auth.service.ts       # Authentication service
+│   ├── checkin.service.ts   # Check-in service
+│   └── api.service.ts       # HTTP request wrapper
 ├── utils/
-│   ├── request.ts            # 请求工具（含 token 注入）
-│   ├── location.ts           # 定位工具
-│   └── format.ts             # 格式化工具
+│   ├── request.ts            # Request utility (with token injection)
+│   ├── location.ts           # Location utility
+│   └── format.ts             # Formatting utility
 └── config/
-    ├── env.ts               # 环境配置
-    └── constant.ts           # 常量
+    ├── env.ts               # Environment configuration
+    └── constant.ts           # Constants
 ```
 
-### 3.2 app.json 全局配置
+### 3.2 app.json Global Configuration
 
 ```json
 {
@@ -220,7 +221,7 @@ miniprogram/
     "pages/scan/index"
   ],
   "window": {
-    "navigationBarTitleText": "考勤系统",
+    "navigationBarTitleText": "Attendance System",
     "navigationBarBackgroundColor": "#128BF3",
     "navigationBarTextStyle": "white",
     "backgroundColor": "#F5F5F5",
@@ -232,17 +233,17 @@ miniprogram/
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "打卡"
+        "text": "Check-in"
       },
       {
         "pagePath": "pages/records/index",
-        "text": "记录"
+        "text": "Records"
       }
     ]
   },
   "permission": {
     "scope.userLocation": {
-      "desc": "用于考勤打卡位置验证"
+      "desc": "Used for attendance check-in location verification"
     }
   },
   "requiredPrivateInfos": [
@@ -252,9 +253,9 @@ miniprogram/
 }
 ```
 
-> ⚠️ 企业微信小程序自 2023 年起要求在 `app.json` 中声明 `requiredPrivateInfos`，否则 `wx.getLocation` 等隐私 API 无法调用。
+> ⚠️ Since 2023, WeCom Mini Programs require declaring `requiredPrivateInfos` in `app.json`, otherwise privacy APIs like `wx.getLocation` cannot be called.
 
-### 3.3 app.ts 入口逻辑
+### 3.3 app.ts Entry Logic
 
 ```typescript
 // app.ts
@@ -279,43 +280,43 @@ App<AppData>({
   },
 
   onLaunch() {
-    // 小程序启动时执行企业微信登录
+    // Execute WeCom login on mini program launch
     this.qyLogin();
   },
 
   /**
-   * 企业微信登录流程
-   * 1. 调用 wx.qyLogin 获取 code
-   * 2. 将 code 发送到后端
-   * 3. 后端用 code 换取 userid 和 session_key
-   * 4. 缓存 server token 用于后续业务请求
+   * WeCom login flow
+   * 1. Call wx.qyLogin to get code
+   * 2. Send code to backend
+   * 3. Backend exchanges code for userid and session_key
+   * 4. Cache server token for subsequent business requests
    */
   async qyLogin() {
     try {
       const { code } = await wx.qyLogin({
-        desc: '获取企业微信身份',
+        desc: 'Get WeCom identity',
       });
 
       if (!code) {
-        console.error('qyLogin 未返回 code');
+        console.error('qyLogin did not return code');
         return;
       }
 
-      // 发送 code 到后端换取 token
+      // Send code to backend to exchange for token
       const result = await this.requestLogin(code);
 
       this.globalData.serverToken = result.token;
       this.globalData.userInfo = result.userInfo;
 
-      console.log('企业微信登录成功', result.userInfo.userid);
+      console.log('WeCom login successful', result.userInfo.userid);
     } catch (err) {
-      console.error('企业微信登录失败', err);
-      wx.showToast({ title: '登录失败，请重试', icon: 'error' });
+      console.error('WeCom login failed', err);
+      wx.showToast({ title: 'Login failed, please retry', icon: 'error' });
     }
   },
 
   /**
-   * 调用后端登录接口
+   * Call backend login API
    */
   requestLogin(code: string): Promise<{ token: string; userInfo: WeComUserInfo }> {
     return new Promise((resolve, reject) => {
@@ -327,7 +328,7 @@ App<AppData>({
           if (res.statusCode === 200 && res.data.code === 0) {
             resolve(res.data.data);
           } else {
-            reject(new Error(res.data.message || '登录失败'));
+            reject(new Error(res.data.message || 'Login failed'));
           }
         },
         fail: reject,
@@ -336,7 +337,7 @@ App<AppData>({
   },
 
   /**
-   * 获取服务端 token（带本地缓存）
+   * Get server token (with local cache)
    */
   getServerToken(): string | undefined {
     return this.globalData.serverToken;
@@ -344,9 +345,9 @@ App<AppData>({
 });
 ```
 
-> 💡 **与 H5 模式的对比**：H5 模式需要通过 OAuth2 网页授权跳转获取 code，涉及页面重定向和 URL 参数处理；小程序模式通过 `wx.qyLogin` 直接获取 code，无需页面跳转，体验更流畅。
+> 💡 **Comparison with H5 mode**: H5 mode requires OAuth2 web authorization redirect to obtain code, involving page redirects and URL parameter handling. Mini program mode obtains code directly via `wx.qyLogin` without page redirection, providing a smoother experience.
 
-### 3.4 TypeScript 配置
+### 3.4 TypeScript Configuration
 
 ```json
 // tsconfig.json
@@ -368,9 +369,9 @@ App<AppData>({
 }
 ```
 
-### 3.5 企业微信 API 类型声明
+### 3.5 WeCom API Type Declarations
 
-微信小程序的基础库类型不包含企业微信专有 API，需要补充声明：
+The base library types for WeChat Mini Programs do not include WeCom-specific APIs, so supplementary declarations are needed:
 
 ```typescript
 // typings/wecom.d.ts
@@ -422,12 +423,12 @@ declare namespace WeCom {
 }
 
 declare const wx: {
-  // 企业微信专有 API
+  // WeCom-specific APIs
   qyLogin(option: WeComQyLoginOption): void;
   selectEnterpriseContact(option: WeComSelectEnterpriseContactOption): void;
   qwChooseEnterpriseContact(option: WeComSelectEnterpriseContactOption): void;
 
-  // 通用 API（微信小程序基础库）
+  // Common APIs (WeChat Mini Program base library)
   request(option: any): WeApp.RequestTask;
   getLocation(option: WeApp.GetLocationOption): void;
   chooseImage(option: any): void;
@@ -440,18 +441,18 @@ declare const wx: {
 };
 ```
 
-## 四、企业微信小程序身份认证
+## IV. WeCom Mini Program Identity Authentication
 
-### 4.1 登录流程全景
+### 4.1 Login Flow Overview
 
-企业微信小程序的登录流程比 H5 OAuth 更简洁，全程无感知：
+The login flow for WeCom Mini Programs is simpler than H5 OAuth, and is completely seamless:
 
 ```
-小程序端                    后端服务                 企业微信API
+Mini Program                Backend Service           WeCom API
   │                          │                        │
   │  1. wx.qyLogin()         │                        │
   │ ─────────────────────────│                        │
-  │  得到 code               │                        │
+  │  get code               │                        │
   │                          │                        │
   │  2. POST /auth/qy-login  │                        │
   │    (code)                │                        │
@@ -466,19 +467,19 @@ declare const wx: {
   │                          │  userid + session_key  │
   │                          │ ◀───────────────────────│
   │                          │                        │
-  │                          │  5. 生成 JWT/Session   │
-  │                          │    缓存到 Redis         │
+  │                          │  5. Generate JWT/Session│
+  │                          │    Cache to Redis       │
   │                          │                        │
-  │  6. 返回 JWT + userInfo   │                        │
+  │  6. Return JWT + userInfo │                        │
   │ ◀─────────────────────────                        │
   │                          │                        │
-  │  7. 后续请求携带 JWT      │                        │
+  │  7. Subsequent requests carry JWT │                │
   │ ─────────────────────────▶                        │
 ```
 
-### 4.2 小程序端：wx.qyLogin
+### 4.2 Mini Program Side: wx.qyLogin
 
-`wx.qyLogin` 是企业微信小程序专有 API，返回的 `code` 用于在服务端换取用户身份。
+`wx.qyLogin` is a WeCom Mini Program-specific API. The returned `code` is used to exchange for user identity on the server side.
 
 ```typescript
 // services/auth.service.ts
@@ -496,20 +497,20 @@ export class AuthService {
   }
 
   /**
-   * 企业微信登录
-   * wx.qyLogin 返回的 code 有效期 5 分钟，且只能使用一次
+   * WeCom login
+   * The code returned by wx.qyLogin is valid for 5 minutes and can only be used once
    */
   async qyLogin(): Promise<void> {
     const { code } = await this.callQyLogin();
     if (!code) {
-      throw new Error('qyLogin 未获取到 code');
+      throw new Error('qyLogin did not obtain code');
     }
 
     const result = await this.exchangeToken(code);
     this.serverToken = result.token;
     this.userInfo = result.userInfo;
 
-    // 本地缓存 token（有效期内免重新登录）
+    // Cache token locally (no re-login needed within validity period)
     wx.setStorage({
       key: 'server_token',
       data: result.token,
@@ -519,7 +520,7 @@ export class AuthService {
   private callQyLogin(): Promise<{ code: string }> {
     return new Promise((resolve, reject) => {
       wx.qyLogin({
-        desc: '获取企业微信身份',
+        desc: 'Get WeCom identity',
         success: resolve,
         fail: reject,
       });
@@ -537,7 +538,7 @@ export class AuthService {
             if (res.statusCode === 200 && res.data.code === 0) {
               resolve(res.data.data);
             } else {
-              reject(new Error(res.data?.message || '换取 token 失败'));
+              reject(new Error(res.data?.message || 'Token exchange failed'));
             }
           },
           fail: reject,
@@ -556,11 +557,11 @@ export class AuthService {
 }
 ```
 
-### 4.3 后端：code 换取 userid
+### 4.3 Backend: Exchanging code for userid
 
-后端使用 `code` 调用企业微信 `jscode2session` 接口，获取 `userid` 和 `session_key`。
+The backend uses `code` to call the WeCom `jscode2session` API to obtain `userid` and `session_key`.
 
-**接口地址**：
+**API Endpoint**:
 
 ```
 GET https://qyapi.weixin.qq.com/cgi-bin/service/miniprogram/jscode2session
@@ -569,11 +570,11 @@ GET https://qyapi.weixin.qq.com/cgi-bin/service/miniprogram/jscode2session
   &grant_type=authorization_code
 ```
 
-**SpringBoot 实现**：
+**SpringBoot Implementation**:
 
 ```java
 /**
- * 企业微信认证 Controller
+ * WeCom Authentication Controller
  *
  * @author cuckoom
  */
@@ -589,29 +590,29 @@ public class QyAuthController {
     private JwtTokenProvider jwtTokenProvider;
 
     /**
-     * 小程序登录：code 换取 userid，签发 JWT
+     * Mini program login: exchange code for userid, issue JWT
      *
-     * @param request 小程序登录请求
-     * @return JWT token + 用户信息
+     * @param request Mini program login request
+     * @return JWT token + user info
      */
     @PostMapping("/qy-login")
     public Result<QyLoginVO> qyLogin(@RequestBody @Valid QyLoginDTO request) {
-        log.info("企业微信小程序登录，code={}", request.getCode());
+        log.info("WeCom mini program login, code={}", request.getCode());
         try {
-            // 1. code 换取 userid 和 session_key
+            // 1. Exchange code for userid and session_key
             QySessionDTO session = qyAuthService.code2Session(request.getCode());
-            log.info("登录成功，userid={}", session.getUserid());
+            log.info("Login successful, userid={}", session.getUserid());
 
-            // 2. 查询/创建用户记录
+            // 2. Query/create user record
             SysUser user = qyAuthService.getOrCreateUser(session.getUserid());
 
-            // 3. 签发 JWT
+            // 3. Issue JWT
             String token = jwtTokenProvider.generateToken(user.getId(), user.getWecomUserId());
 
-            // 4. 缓存 session_key（用于后续解密加密数据）
+            // 4. Cache session_key (for decrypting encrypted data later)
             qyAuthService.cacheSessionKey(session.getUserid(), session.getSessionKey());
 
-            // 5. 构建返回对象
+            // 5. Build response object
             QyLoginVO vo = new QyLoginVO();
             vo.setToken(token);
             vo.setUserInfo(QyUserInfoVO.builder()
@@ -623,10 +624,10 @@ public class QyAuthController {
 
             return Result.success(vo);
         } catch (BusinessException e) {
-            log.warn("企业微信登录业务异常: {}", e.getMessage());
+            log.warn("WeCom login business exception: {}", e.getMessage());
             return Result.fail(e.getCode(), e.getMessage());
         } catch (Exception e) {
-            log.error("企业微信登录系统异常", e);
+            log.error("WeCom login system exception", e);
             return Result.fail(ErrorCode.SYSTEM_ERROR);
         }
     }
@@ -635,7 +636,7 @@ public class QyAuthController {
 
 ```java
 /**
- * 企业微信认证 Service
+ * WeCom Authentication Service
  *
  * @author cuckoom
  */
@@ -667,9 +668,9 @@ public class QyAuthService {
     private SysUserMapper userMapper;
 
     /**
-     * 小程序 code 换取 session
+     * Exchange mini program code for session
      *
-     * @param code wx.qyLogin 返回的 code
+     * @param code code returned by wx.qyLogin
      * @return userid + session_key
      */
     public QySessionDTO code2Session(String code) {
@@ -684,7 +685,7 @@ public class QyAuthService {
         JSONObject response = restTemplate.getForObject(url, JSONObject.class);
         if (response == null || response.getIntValue("errcode") != 0) {
             throw new BusinessException(ErrorCode.QY_LOGIN_FAILED,
-                    "code 换取 session 失败: " + (response == null ? "null" : response.getString("errmsg")));
+                    "Failed to exchange code for session: " + (response == null ? "null" : response.getString("errmsg")));
         }
 
         return QySessionDTO.builder()
@@ -694,7 +695,7 @@ public class QyAuthService {
     }
 
     /**
-     * 查询或创建系统用户
+     * Query or create system user
      */
     public SysUser getOrCreateUser(String wecomUserId) {
         SysUser user = userMapper.findByWecomUserId(wecomUserId);
@@ -702,7 +703,7 @@ public class QyAuthService {
             return user;
         }
 
-        // 新用户：通过通讯录 API 获取详情并入库
+        // New user: get details via address book API and persist
         WecomUserDTO wecomUser = getUserInfoByApi(wecomUserId);
         user = new SysUser();
         user.setWecomUserId(wecomUserId);
@@ -720,7 +721,7 @@ public class QyAuthService {
     }
 
     /**
-     * 缓存 session_key（有效期 7 天）
+     * Cache session_key (valid for 7 days)
      */
     public void cacheSessionKey(String userid, String sessionKey) {
         String key = SESSION_KEY_CACHE_PREFIX + userid;
@@ -728,14 +729,14 @@ public class QyAuthService {
     }
 
     /**
-     * 获取缓存的 session_key
+     * Get cached session_key
      */
     public String getSessionKey(String userid) {
         return redisTemplate.opsForValue().get(SESSION_KEY_CACHE_PREFIX + userid);
     }
 
     /**
-     * 通过通讯录 API 获取用户详情
+     * Get user details via address book API
      */
     private WecomUserDTO getUserInfoByApi(String userid) {
         String accessToken = tokenManager.getAccessToken();
@@ -747,7 +748,7 @@ public class QyAuthService {
         JSONObject response = restTemplate.getForObject(url, JSONObject.class);
         if (response == null || response.getIntValue("errcode") != 0) {
             throw new BusinessException(ErrorCode.WECOM_API_ERROR,
-                    "获取用户信息失败: " + (response == null ? "null" : response.getString("errmsg")));
+                    "Failed to get user info: " + (response == null ? "null" : response.getString("errmsg")));
         }
 
         return WecomUserDTO.builder()
@@ -762,12 +763,12 @@ public class QyAuthService {
 }
 ```
 
-### 4.4 JWT 认证拦截器
+### 4.4 JWT Authentication Interceptor
 
 ```java
 /**
- * JWT 认证拦截器
- * 校验请求头中的 Authorization token
+ * JWT Authentication Interceptor
+ * Validates the Authorization token in request header
  *
  * @author cuckoom
  */
@@ -785,7 +786,7 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request,
                              HttpServletResponse response,
                              Object handler) {
-        // 放行登录接口和回调接口
+        // Allow login and callback endpoints
         String uri = request.getRequestURI();
         if (uri.contains("/api/auth/") || uri.contains("/api/wecom/callback/")) {
             return true;
@@ -793,7 +794,7 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
 
         String header = request.getHeader(AUTH_HEADER);
         if (header == null || !header.startsWith(TOKEN_PREFIX)) {
-            sendError(response, 401, "缺少认证信息");
+            sendError(response, 401, "Missing authentication info");
             return false;
         }
 
@@ -803,17 +804,17 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             Long userId = claims.get("userId", Long.class);
             String wecomUserId = claims.get("wecomUserId", String.class);
 
-            // 将用户信息存入 request 供 Controller 使用
+            // Store user info in request for Controller use
             request.setAttribute("currentUserId", userId);
             request.setAttribute("currentWecomUserId", wecomUserId);
 
             return true;
         } catch (ExpiredJwtException e) {
-            sendError(response, 401, "token 已过期，请重新登录");
+            sendError(response, 401, "Token expired, please log in again");
             return false;
         } catch (Exception e) {
-            log.warn("JWT 校验失败", e);
-            sendError(response, 401, "无效的认证信息");
+            log.warn("JWT validation failed", e);
+            sendError(response, 401, "Invalid authentication info");
             return false;
         }
     }
@@ -824,29 +825,29 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
         try {
             response.getWriter().write(JSONUtil.toJsonStr(Result.fail(code, msg)));
         } catch (IOException e) {
-            log.error("写入错误响应失败", e);
+            log.error("Failed to write error response", e);
         }
     }
 }
 ```
 
-> 💡 **与 H5 模式的差异**：H5 模式通过 OAuth2 网页授权，需要构造授权链接 → 用户同意 → 重定向回调 → 后端换取 userid，流程涉及多次页面跳转；小程序模式通过 `wx.qyLogin` 一步获取 code，后端直接换取 userid，无需用户感知，体验更好。
+> 💡 **Difference from H5 mode**: H5 mode uses OAuth2 web authorization, which requires constructing an authorization link -> user consent -> redirect callback -> backend exchanging for userid. The process involves multiple page redirects. Mini program mode obtains code in one step via `wx.qyLogin`, and the backend directly exchanges for userid without user awareness, providing a better experience.
 
-## 五、考勤打卡功能实现
+## V. Attendance Check-in Feature Implementation
 
-### 5.1 后端 API 对接
+### 5.1 Backend API Integration
 
-#### 5.1.1 access_token 管理
+#### 5.1.1 access_token Management
 
-access_token 是企业微信 API 的全局票据，所有服务端 API 调用都需要携带。
+access_token is the global ticket for WeCom APIs. All server-side API calls require it.
 
-**获取接口**：
+**API Endpoint**:
 
 ```
 GET https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=CORPID&corpsecret=SECRET
 ```
 
-**响应**：
+**Response**:
 
 ```json
 {
@@ -857,19 +858,19 @@ GET https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=CORPID&corpsecret=SECRET
 }
 ```
 
-**关键策略**：
-- 有效期 7200 秒（2 小时），需提前刷新
-- 同一应用的有效 access_token 唯一，重复获取会使旧 token 失效
-- **必须服务端获取**，不能在前端直接调用（会暴露 secret）
-- 建议使用 Redis 缓存，设置过期时间为 7100 秒（留 100 秒余量）
-- 多实例部署需分布式锁防止并发刷新
+**Key Strategies**:
+- Valid for 7200 seconds (2 hours), needs proactive refresh
+- The valid access_token for the same application is unique. Repeated retrieval will invalidate the old token
+- **Must be obtained on the server side**, cannot be called directly from the frontend (would expose secret)
+- Recommended to use Redis cache with an expiration of 7100 seconds (100-second margin)
+- Multi-instance deployment requires distributed locks to prevent concurrent refresh
 
-**SpringBoot Token 管理器**：
+**SpringBoot Token Manager**:
 
 ```java
 /**
- * 企业微信 access_token 管理器
- * 使用 Redis 缓存 + 分布式锁防止并发刷新
+ * WeCom access_token Manager
+ * Uses Redis cache + distributed lock to prevent concurrent refresh
  *
  * @author cuckoom
  */
@@ -894,40 +895,40 @@ public class WecomTokenManager {
     private RestTemplate restTemplate;
 
     /**
-     * 获取 access_token（双重检查 + 分布式锁）
+     * Get access_token (double-check + distributed lock)
      */
     public String getAccessToken() {
-        // 1. 先查缓存
+        // 1. Check cache first
         String cached = redisTemplate.opsForValue().get(TOKEN_CACHE_KEY);
         if (StrUtil.isNotBlank(cached)) {
             return cached;
         }
 
-        // 2. 获取分布式锁
+        // 2. Acquire distributed lock
         Boolean locked = redisTemplate.opsForValue()
                 .setIfAbsent(TOKEN_LOCK_KEY, "1", 10, TimeUnit.SECONDS);
         if (Boolean.FALSE.equals(locked)) {
-            // 未获取到锁，等待重试
+            // Failed to acquire lock, wait and retry
             return waitForToken();
         }
 
         try {
-            // 3. 双重检查
+            // 3. Double check
             cached = redisTemplate.opsForValue().get(TOKEN_CACHE_KEY);
             if (StrUtil.isNotBlank(cached)) {
                 return cached;
             }
 
-            // 4. 调用企业微信 API 刷新
+            // 4. Call WeCom API to refresh
             return refreshTokenFromWecom();
         } finally {
-            // 5. 释放锁
+            // 5. Release lock
             redisTemplate.delete(TOKEN_LOCK_KEY);
         }
     }
 
     /**
-     * 调用企业微信 API 获取新 token
+     * Call WeCom API to get new token
      */
     private String refreshTokenFromWecom() {
         String url = String.format(
@@ -938,7 +939,7 @@ public class WecomTokenManager {
         JSONObject response = restTemplate.getForObject(url, JSONObject.class);
         if (response == null || response.getIntValue("errcode") != 0) {
             throw new BusinessException(ErrorCode.WECOM_API_ERROR,
-                    "获取 access_token 失败: " + (response == null ? "null" : response.getString("errmsg")));
+                    "Failed to get access_token: " + (response == null ? "null" : response.getString("errmsg")));
         }
 
         String accessToken = response.getString("access_token");
@@ -947,12 +948,12 @@ public class WecomTokenManager {
                 TOKEN_EXPIRE_SECONDS, TimeUnit.SECONDS
         );
 
-        log.info("企业微信 access_token 刷新成功");
+        log.info("WeCom access_token refreshed successfully");
         return accessToken;
     }
 
     /**
-     * 等待其他实例刷新 token
+     * Wait for other instances to refresh token
      */
     private String waitForToken() {
         for (int i = 0; i < 5; i++) {
@@ -967,28 +968,28 @@ public class WecomTokenManager {
                 return token;
             }
         }
-        throw new BusinessException(ErrorCode.WECOM_API_ERROR, "获取 access_token 超时");
+        throw new BusinessException(ErrorCode.WECOM_API_ERROR, "Timed out getting access_token");
     }
 }
 ```
 
-#### 5.1.2 通讯录管理
+#### 5.1.2 Address Book Management
 
-通过通讯录 API 可以同步企业组织架构和员工信息。
+Through the address book API, you can synchronize enterprise organizational structure and employee information.
 
-**获取部门列表**：
+**Get Department List**:
 
 ```
 GET https://qyapi.weixin.qq.com/cgi-bin/department/list?access_token=TOKEN&id=0
 ```
 
-**获取部门成员详情**：
+**Get Department Member Details**:
 
 ```
 GET https://qyapi.weixin.qq.com/cgi-bin/user/list?access_token=TOKEN&department_id=1&fetch_child=1
 ```
 
-**响应示例**：
+**Response Example**:
 
 ```json
 {
@@ -997,9 +998,9 @@ GET https://qyapi.weixin.qq.com/cgi-bin/user/list?access_token=TOKEN&department_
   "userlist": [
     {
       "userid": "zhangsan",
-      "name": "张三",
+      "name": "Zhang San",
       "department": [1, 2],
-      "position": "产品经理",
+      "position": "Product Manager",
       "mobile": "13800138000",
       "email": "zhangsan@company.com",
       "status": 1,
@@ -1009,11 +1010,11 @@ GET https://qyapi.weixin.qq.com/cgi-bin/user/list?access_token=TOKEN&department_
 }
 ```
 
-**同步策略**：建议每天凌晨全量同步一次通讯录，同时配置通讯录变更回调（见后续回调章节），实现增量实时同步。
+**Sync Strategy**: It is recommended to perform a full address book sync daily at midnight, while configuring address book change callbacks (see the callback chapter below) to achieve incremental real-time sync.
 
-#### 5.1.3 请求工具封装
+#### 5.1.3 Request Utility Wrapper
 
-小程序端封装统一请求工具，自动注入 JWT token：
+The mini program side wraps a unified request utility that automatically injects the JWT token:
 
 ```typescript
 // utils/request.ts
@@ -1041,7 +1042,7 @@ export async function request<T = any>(options: RequestOptions): Promise<T> {
     ...options.header,
   };
 
-  // 自动注入 JWT token
+  // Automatically inject JWT token
   const token = app.getServerToken();
   if (token) {
     header['Authorization'] = `Bearer ${token}`;
@@ -1055,9 +1056,9 @@ export async function request<T = any>(options: RequestOptions): Promise<T> {
       header,
       success: (res) => {
         if (res.statusCode === 401) {
-          // token 过期，重新登录
+          // Token expired, re-login
           app.qyLogin();
-          reject(new Error('登录已过期'));
+          reject(new Error('Session expired'));
           return;
         }
         if (res.statusCode === 200) {
@@ -1065,7 +1066,7 @@ export async function request<T = any>(options: RequestOptions): Promise<T> {
           if (body.code === 0) {
             resolve(body.data);
           } else {
-            wx.showToast({ title: body.message || '请求失败', icon: 'error' });
+            wx.showToast({ title: body.message || 'Request failed', icon: 'error' });
             reject(new Error(body.message));
           }
         } else {
@@ -1073,7 +1074,7 @@ export async function request<T = any>(options: RequestOptions): Promise<T> {
         }
       },
       fail: (err) => {
-        wx.showToast({ title: '网络异常', icon: 'error' });
+        wx.showToast({ title: 'Network error', icon: 'error' });
         reject(err);
       },
     });
@@ -1081,11 +1082,11 @@ export async function request<T = any>(options: RequestOptions): Promise<T> {
 }
 ```
 
-### 5.2 地理定位打卡
+### 5.2 Geolocation Check-in
 
-地理定位是考勤系统的核心功能。小程序通过 `wx.getLocation` 直接获取设备定位，无需 JS-SDK 签名验证（H5 模式需要）。
+Geolocation is the core feature of an attendance system. The mini program obtains device location directly via `wx.getLocation` without JS-SDK signature verification (which H5 mode requires).
 
-#### 5.2.1 小程序端实现
+#### 5.2.1 Mini Program Implementation
 
 ```typescript
 // utils/location.ts
@@ -1093,25 +1094,25 @@ export async function request<T = any>(options: RequestOptions): Promise<T> {
 interface LocationInfo {
   latitude: number;
   longitude: number;
-  accuracy: number;  // 定位精度（米）
+  accuracy: number;  // Location accuracy (meters)
   speed: number;
 }
 
 /**
- * 获取当前定位
- * 需在 app.json 中声明 requiredPrivateInfos: ["getLocation"]
+ * Get current location
+ * Requires declaring requiredPrivateInfos: ["getLocation"] in app.json
  */
 export async function getCurrentLocation(): Promise<LocationInfo> {
-  // 检查定位权限
+  // Check location permission
   const hasPermission = await checkLocationPermission();
   if (!hasPermission) {
     const granted = await requestLocationPermission();
     if (!granted) {
-      throw new Error('请允许定位权限以使用打卡功能');
+      throw new Error('Please allow location permission to use check-in');
     }
   }
 
-  // 高精度定位模式
+  // High-accuracy positioning mode
   return new Promise((resolve, reject) => {
     wx.getLocation({
       type: 'gcj02',
@@ -1127,15 +1128,15 @@ export async function getCurrentLocation(): Promise<LocationInfo> {
         });
       },
       fail: (err) => {
-        console.error('获取定位失败', err);
-        reject(new Error('获取定位失败，请检查 GPS 是否开启'));
+        console.error('Failed to get location', err);
+        reject(new Error('Failed to get location, please check if GPS is enabled'));
       },
     });
   });
 }
 
 /**
- * 检查定位权限
+ * Check location permission
  */
 function checkLocationPermission(): Promise<boolean> {
   return new Promise((resolve) => {
@@ -1149,7 +1150,7 @@ function checkLocationPermission(): Promise<boolean> {
 }
 
 /**
- * 请求定位权限
+ * Request location permission
  */
 function requestLocationPermission(): Promise<boolean> {
   return new Promise((resolve) => {
@@ -1157,11 +1158,11 @@ function requestLocationPermission(): Promise<boolean> {
       scope: 'scope.userLocation',
       success: () => resolve(true),
       fail: () => {
-        // 引导用户到设置页
+        // Guide user to settings page
         wx.showModal({
-          title: '定位权限',
-          content: '打卡需要定位权限，请在设置中开启',
-          confirmText: '去设置',
+          title: 'Location Permission',
+          content: 'Check-in requires location permission, please enable it in settings',
+          confirmText: 'Go to Settings',
           success: (res) => {
             if (res.confirm) {
               wx.openSetting({
@@ -1181,7 +1182,7 @@ function requestLocationPermission(): Promise<boolean> {
 }
 
 /**
- * 计算两点间距离（Haversine 公式）
+ * Calculate distance between two points (Haversine formula)
  */
 export function calculateDistance(
   lat1: number,
@@ -1189,7 +1190,7 @@ export function calculateDistance(
   lat2: number,
   lng2: number,
 ): number {
-  const R = 6371000; // 地球半径（米）
+  const R = 6371000; // Earth radius (meters)
   const toRad = (deg: number) => (deg * Math.PI) / 180;
 
   const dLat = toRad(lat2 - lat1);
@@ -1202,7 +1203,7 @@ export function calculateDistance(
 }
 ```
 
-#### 5.2.2 打卡页面
+#### 5.2.2 Check-in Page
 
 ```typescript
 // pages/index/index.ts
@@ -1219,10 +1220,10 @@ interface CheckinPageData {
   loading: boolean;
 }
 
-// 公司打卡范围配置
+// Company check-in range configuration
 const COMPANY_LAT = 30.2741;
 const COMPANY_LNG = 120.1551;
-const ALLOWED_RADIUS = 200; // 允许打卡半径（米）
+const ALLOWED_RADIUS = 200; // Allowed check-in radius (meters)
 
 Page<CheckinPageData, WeApp.IAnyObject>({
   data: {
@@ -1252,10 +1253,10 @@ Page<CheckinPageData, WeApp.IAnyObject>({
     this.setData({ loading: true });
 
     try {
-      // 1. 获取定位
+      // 1. Get location
       const location = await getCurrentLocation();
 
-      // 2. 计算距离
+      // 2. Calculate distance
       const distance = calculateDistance(
         location.latitude,
         location.longitude,
@@ -1268,19 +1269,19 @@ Page<CheckinPageData, WeApp.IAnyObject>({
       this.setData({
         distance: Math.round(distance),
         inRange,
-        locationText: inRange ? '已在打卡范围内' : `距离公司 ${Math.round(distance)} 米`,
+        locationText: inRange ? 'Within check-in range' : `${Math.round(distance)}m from company`,
       });
 
       if (!inRange) {
         wx.showModal({
-          title: '不在打卡范围',
-          content: `您当前距离公司 ${Math.round(distance)} 米，超出允许范围 ${ALLOWED_RADIUS} 米。`,
+          title: 'Out of Range',
+          content: `You are ${Math.round(distance)}m from the company, exceeding the allowed range of ${ALLOWED_RADIUS}m.`,
           showCancel: false,
         });
         return;
       }
 
-      // 3. 提交打卡
+      // 3. Submit check-in
       const result = await request<{ checkinId: string; time: string }>({
         url: '/api/checkin/submit',
         method: 'POST',
@@ -1293,12 +1294,12 @@ Page<CheckinPageData, WeApp.IAnyObject>({
         },
       });
 
-      wx.showToast({ title: '打卡成功', icon: 'success' });
-      console.log('打卡结果', result);
+      wx.showToast({ title: 'Check-in successful', icon: 'success' });
+      console.log('Check-in result', result);
     } catch (err) {
-      console.error('打卡失败', err);
+      console.error('Check-in failed', err);
       wx.showToast({
-        title: err.message || '打卡失败',
+        title: err.message || 'Check-in failed',
         icon: 'error',
       });
     } finally {
@@ -1308,11 +1309,11 @@ Page<CheckinPageData, WeApp.IAnyObject>({
 });
 ```
 
-#### 5.2.3 后端打卡接口
+#### 5.2.3 Backend Check-in API
 
 ```java
 /**
- * 考勤打卡 Controller
+ * Attendance Check-in Controller
  *
  * @author cuckoom
  */
@@ -1325,10 +1326,10 @@ public class CheckinController {
     private CheckinService checkinService;
 
     /**
-     * 提交打卡
+     * Submit check-in
      *
-     * @param request 打卡请求
-     * @param userId 当前用户 ID（从 JWT 拦截器注入）
+     * @param request Check-in request
+     * @param userId Current user ID (injected from JWT interceptor)
      */
     @PostMapping("/submit")
     public Result<CheckinVO> submit(
@@ -1338,7 +1339,7 @@ public class CheckinController {
         Long userId = (Long) httpRequest.getAttribute("currentUserId");
         String wecomUserId = (String) httpRequest.getAttribute("currentWecomUserId");
 
-        log.info("用户 {} 提交打卡，位置=({},{})",
+        log.info("User {} submitting check-in, location=({},{})",
                 wecomUserId, request.getLatitude(), request.getLongitude());
 
         CheckinVO vo = checkinService.checkin(userId, request);
@@ -1346,7 +1347,7 @@ public class CheckinController {
     }
 
     /**
-     * 查询今日打卡记录
+     * Query today's check-in records
      */
     @GetMapping("/today")
     public Result<List<CheckinVO>> todayRecords(HttpServletRequest httpRequest) {
@@ -1358,7 +1359,7 @@ public class CheckinController {
 
 ```java
 /**
- * 考勤打卡 Service
+ * Attendance Check-in Service
  *
  * @author cuckoom
  */
@@ -1382,11 +1383,11 @@ public class CheckinService {
     private WecomMessageService messageService;
 
     /**
-     * 打卡
+     * Check in
      */
     @Transactional(rollbackFor = Exception.class)
     public CheckinVO checkin(Long userId, CheckinDTO dto) {
-        // 1. 距离校验
+        // 1. Distance validation
         double distance = calculateDistance(
                 dto.getLatitude(), dto.getLongitude(),
                 companyLat, companyLng
@@ -1394,20 +1395,20 @@ public class CheckinService {
 
         if (distance > allowedRadius) {
             throw new BusinessException(ErrorCode.OUT_OF_RANGE,
-                    String.format("不在打卡范围内，距离公司 %.0f 米", distance));
+                    String.format("Out of check-in range, %.0fm from company", distance));
         }
 
-        // 2. 防重复打卡（同一类型 5 分钟内不可重复）
+        // 2. Prevent duplicate check-in (same type within 5 minutes)
         String checkinType = determineCheckinType(LocalDateTime.now());
         CheckinRecord existing = checkinMapper.findRecentRecord(
                 userId, checkinType, 5
         );
         if (existing != null) {
             throw new BusinessException(ErrorCode.DUPLICATE_CHECKIN,
-                    "5 分钟内已打卡，请勿重复打卡");
+                    "Already checked in within 5 minutes, please do not duplicate check-in");
         }
 
-        // 3. 保存打卡记录
+        // 3. Save check-in record
         CheckinRecord record = new CheckinRecord();
         record.setUserId(userId);
         record.setCheckinType(checkinType);
@@ -1419,7 +1420,7 @@ public class CheckinService {
         record.setCreateTime(LocalDateTime.now());
         checkinMapper.insert(record);
 
-        // 4. 推送打卡成功通知
+        // 4. Push check-in success notification
         messageService.sendCheckinNotification(record);
 
         return CheckinVO.builder()
@@ -1444,43 +1445,43 @@ public class CheckinService {
     private String determineCheckinType(LocalDateTime now) {
         int hour = now.getHour();
         if (hour < 12) {
-            return "CLOCK_IN";  // 上班打卡
+            return "CLOCK_IN";  // Clock in
         } else {
-            return "CLOCK_OUT"; // 下班打卡
+            return "CLOCK_OUT"; // Clock out
         }
     }
 }
 ```
 
-> 💡 **与 H5 模式的对比**：H5 模式需要通过 JS-SDK 的 `wx.getLocation` 获取定位，需要先进行 `wx.config` 签名验证，且 iOS/Android 的签名 URL 处理不同，坑很多；小程序模式直接调用 `wx.getLocation`，无需签名，API 统一，开发体验显著更好。
+> 💡 **Comparison with H5 mode**: H5 mode requires `wx.getLocation` via JS-SDK, which first requires `wx.config` signature verification. The signature URL handling differs between iOS and Android, leading to many pitfalls. Mini program mode calls `wx.getLocation` directly without signatures, with unified APIs, providing significantly better development experience.
 
-### 5.3 拍照打卡
+### 5.3 Photo Check-in
 
-拍照打卡用于需要现场照片佐证的场景（如外勤打卡、补卡说明）。
+Photo check-in is used for scenarios requiring on-site photo evidence (e.g., field work check-in, make-up check-in explanation).
 
-#### 5.3.1 小程序端实现
+#### 5.3.1 Mini Program Implementation
 
 ```typescript
-// pages/index/index.ts （拍照打卡部分）
+// pages/index/index.ts (Photo check-in portion)
 
 import { request } from '../../utils/request';
 
 /**
- * 拍照打卡
- * 使用 wx.chooseMedia 获取照片（推荐，替代已弃用的 wx.chooseImage）
+ * Photo check-in
+ * Uses wx.chooseMedia to get photos (recommended, replaces deprecated wx.chooseImage)
  */
 async handlePhotoCheckin() {
   if (this.data.loading) return;
   this.setData({ loading: true });
 
   try {
-    // 1. 拍照
+    // 1. Take photo
     const media = await this.takePhoto();
     if (!media.tempFilePath) {
-      throw new Error('拍照失败');
+      throw new Error('Photo capture failed');
     }
 
-    // 2. 获取定位（照片打卡也需位置校验）
+    // 2. Get location (photo check-in also requires location validation)
     const location = await getCurrentLocation();
     const distance = calculateDistance(
       location.latitude,
@@ -1489,50 +1490,50 @@ async handlePhotoCheckin() {
       COMPANY_LNG,
     );
 
-    // 3. 上传照片到服务端
+    // 3. Upload photo to server
     const uploadResult = await this.uploadPhoto(
       media.tempFilePath,
       location.latitude,
       location.longitude,
     );
 
-    wx.showToast({ title: '拍照打卡成功', icon: 'success' });
-    console.log('上传结果', uploadResult);
+    wx.showToast({ title: 'Photo check-in successful', icon: 'success' });
+    console.log('Upload result', uploadResult);
   } catch (err) {
-    console.error('拍照打卡失败', err);
-    wx.showToast({ title: err.message || '拍照打卡失败', icon: 'error' });
+    console.error('Photo check-in failed', err);
+    wx.showToast({ title: err.message || 'Photo check-in failed', icon: 'error' });
   } finally {
     this.setData({ loading: false });
   }
 }
 
 /**
- * 调用相机拍照
+ * Take photo using camera
  */
 private takePhoto(): Promise<{ tempFilePath: string }> {
   return new Promise((resolve, reject) => {
     wx.chooseMedia({
       count: 1,
       mediaType: ['image'],
-      sourceType: ['camera'],     // 仅允许拍照，不允许相册选择（防作弊）
-      camera: 'back',              // 后置摄像头
-      sizeType: ['compressed'],    // 压缩上传
+      sourceType: ['camera'],     // Only allow camera, no album selection (anti-cheating)
+      camera: 'back',              // Rear camera
+      sizeType: ['compressed'],    // Compressed upload
       success: (res) => {
         if (res.tempFiles && res.tempFiles.length > 0) {
           resolve({ tempFilePath: res.tempFiles[0].tempFilePath });
         } else {
-          reject(new Error('未获取到照片'));
+          reject(new Error('No photo obtained'));
         }
       },
       fail: (err) => {
-        reject(new Error('拍照取消或失败'));
+        reject(new Error('Photo cancelled or failed'));
       },
     });
   });
 }
 
 /**
- * 上传照片到服务端
+ * Upload photo to server
  */
 private uploadPhoto(filePath: string, latitude: number, longitude: number): Promise<any> {
   const app = getApp<AppData>();
@@ -1557,10 +1558,10 @@ private uploadPhoto(filePath: string, latitude: number, longitude: number): Prom
           if (body.code === 0) {
             resolve(body.data);
           } else {
-            reject(new Error(body.message || '上传失败'));
+            reject(new Error(body.message || 'Upload failed'));
           }
         } else {
-          reject(new Error(`上传失败 HTTP ${res.statusCode}`));
+          reject(new Error(`Upload failed HTTP ${res.statusCode}`));
         }
       },
       fail: reject,
@@ -1569,11 +1570,11 @@ private uploadPhoto(filePath: string, latitude: number, longitude: number): Prom
 }
 ```
 
-#### 5.3.2 后端照片上传接口
+#### 5.3.2 Backend Photo Upload API
 
 ```java
 /**
- * 拍照打卡 Controller
+ * Photo Check-in Controller
  *
  * @author cuckoom
  */
@@ -1589,11 +1590,11 @@ public class CheckinPhotoController {
     private FileStorageService fileStorageService;
 
     /**
-     * 拍照打卡上传
+     * Photo check-in upload
      *
-     * @param file 照片文件
-     * @param latitude 纬度
-     * @param longitude 经度
+     * @param file Photo file
+     * @param latitude Latitude
+     * @param longitude Longitude
      */
     @PostMapping("/photo")
     public Result<CheckinVO> photoCheckin(
@@ -1604,22 +1605,22 @@ public class CheckinPhotoController {
     ) {
         Long userId = (Long) httpRequest.getAttribute("currentUserId");
 
-        // 1. 校验文件
+        // 1. Validate file
         if (file.isEmpty()) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "照片不能为空");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "Photo cannot be empty");
         }
         if (file.getSize() > 5 * 1024 * 1024) {
-            throw new BusinessException(ErrorCode.FILE_TOO_LARGE, "照片不能超过 5MB");
+            throw new BusinessException(ErrorCode.FILE_TOO_LARGE, "Photo cannot exceed 5MB");
         }
         String contentType = file.getContentType();
         if (contentType == null || !contentType.startsWith("image/")) {
-            throw new BusinessException(ErrorCode.FILE_TYPE_ERROR, "仅支持图片格式");
+            throw new BusinessException(ErrorCode.FILE_TYPE_ERROR, "Only image formats are supported");
         }
 
-        // 2. 存储照片到内网（不对外暴露）
+        // 2. Store photo to internal network (not publicly accessible)
         String photoPath = fileStorageService.store(file, "checkin/" + userId);
 
-        // 3. 创建打卡记录
+        // 3. Create check-in record
         CheckinDTO dto = new CheckinDTO();
         dto.setLatitude(latitude);
         dto.setLongitude(longitude);
@@ -1631,11 +1632,11 @@ public class CheckinPhotoController {
 }
 ```
 
-### 5.4 扫码打卡
+### 5.4 QR Code Scan Check-in
 
-扫码打卡适用于工位签到、会议室签到等场景，用户扫描固定的二维码完成打卡。
+QR code scan check-in is suitable for scenarios like workstation sign-in, meeting room sign-in, where users scan a fixed QR code to complete check-in.
 
-#### 5.4.1 小程序端实现
+#### 5.4.1 Mini Program Implementation
 
 ```typescript
 // pages/scan/index.ts
@@ -1658,26 +1659,26 @@ Page<ScanPageData, WeApp.IAnyObject>({
     this.setData({ scanning: true });
 
     try {
-      // 1. 调用扫码
+      // 1. Call QR code scan
       const res = await this.scanQRCode();
       const qrContent = res.result;
 
       if (!qrContent) {
-        throw new Error('扫码内容为空');
+        throw new Error('Scan content is empty');
       }
 
-      // 2. 校验二维码内容（需包含特定前缀）
+      // 2. Validate QR code content (must contain specific prefix)
       if (!qrContent.startsWith('wecom-attendance://')) {
-        throw new Error('非考勤二维码，无法打卡');
+        throw new Error('Not an attendance QR code, cannot check in');
       }
 
-      // 3. 提取 token
+      // 3. Extract token
       const qrToken = qrContent.replace('wecom-attendance://', '');
 
-      // 4. 同时获取定位（防作弊：扫码+定位双重校验）
+      // 4. Get location simultaneously (anti-cheating: scan + location dual verification)
       const location = await getCurrentLocation();
 
-      // 5. 提交扫码打卡
+      // 5. Submit scan check-in
       const result = await request<{ checkinId: string; time: string }>({
         url: '/api/checkin/scan',
         method: 'POST',
@@ -1688,29 +1689,29 @@ Page<ScanPageData, WeApp.IAnyObject>({
         },
       });
 
-      this.setData({ result: '打卡成功' });
-      wx.showToast({ title: '扫码打卡成功', icon: 'success' });
-      console.log('扫码打卡结果', result);
+      this.setData({ result: 'Check-in successful' });
+      wx.showToast({ title: 'Scan check-in successful', icon: 'success' });
+      console.log('Scan check-in result', result);
     } catch (err) {
-      console.error('扫码打卡失败', err);
-      this.setData({ result: err.message || '扫码打卡失败' });
-      wx.showToast({ title: err.message || '扫码打卡失败', icon: 'error' });
+      console.error('Scan check-in failed', err);
+      this.setData({ result: err.message || 'Scan check-in failed' });
+      wx.showToast({ title: err.message || 'Scan check-in failed', icon: 'error' });
     } finally {
       this.setData({ scanning: false });
     }
   },
 
   /**
-   * 调用 wx.scanCode 扫描二维码
+   * Call wx.scanCode to scan QR code
    */
   scanQRCode(): Promise<{ result: string }> {
     return new Promise((resolve, reject) => {
       wx.scanCode({
-        onlyFromCamera: true,   // 仅允许从相机扫码（防截图作弊）
-        scanType: ['qrCode'],   // 仅扫描二维码
+        onlyFromCamera: true,   // Only allow scanning from camera (anti-screenshot cheating)
+        scanType: ['qrCode'],   // Only scan QR codes
         success: resolve,
         fail: () => {
-          reject(new Error('扫码取消或失败'));
+          reject(new Error('Scan cancelled or failed'));
         },
       });
     });
@@ -1718,11 +1719,11 @@ Page<ScanPageData, WeApp.IAnyObject>({
 });
 ```
 
-#### 5.4.2 后端扫码打卡接口
+#### 5.4.2 Backend Scan Check-in API
 
 ```java
 /**
- * 扫码打卡 Controller
+ * Scan Check-in Controller
  *
  * @author cuckoom
  */
@@ -1735,9 +1736,9 @@ public class ScanCheckinController {
     private CheckinService checkinService;
 
     /**
-     * 扫码打卡
+     * Scan check-in
      *
-     * @param request 扫码打卡请求
+     * @param request Scan check-in request
      */
     @PostMapping("/scan")
     public Result<CheckinVO> scanCheckin(
@@ -1746,7 +1747,7 @@ public class ScanCheckinController {
     ) {
         Long userId = (Long) httpRequest.getAttribute("currentUserId");
 
-        log.info("用户 {} 扫码打卡，qrToken={}", userId, request.getQrToken());
+        log.info("User {} scan check-in, qrToken={}", userId, request.getQrToken());
 
         CheckinVO vo = checkinService.scanCheckin(userId, request);
         return Result.success(vo);
@@ -1756,7 +1757,7 @@ public class ScanCheckinController {
 
 ```java
 /**
- * 扫码打卡 Service 实现
+ * Scan Check-in Service Implementation
  *
  * @author cuckoom
  */
@@ -1780,35 +1781,35 @@ public class ScanCheckinServiceImpl implements CheckinService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public CheckinVO scanCheckin(Long userId, ScanCheckinDTO dto) {
-        // 1. 校验二维码 token
+        // 1. Validate QR code token
         QrToken qrToken = qrTokenMapper.findByToken(dto.getQrToken());
         if (qrToken == null) {
-            throw new BusinessException(ErrorCode.INVALID_QR_TOKEN, "无效的打卡二维码");
+            throw new BusinessException(ErrorCode.INVALID_QR_TOKEN, "Invalid check-in QR code");
         }
         if (qrToken.getExpireTime().isBefore(LocalDateTime.now())) {
-            throw new BusinessException(ErrorCode.EXPIRED_QR_TOKEN, "打卡二维码已过期");
+            throw new BusinessException(ErrorCode.EXPIRED_QR_TOKEN, "Check-in QR code has expired");
         }
         if (qrToken.getStatus() == 0) {
-            throw new BusinessException(ErrorCode.QR_TOKEN_DISABLED, "打卡二维码已停用");
+            throw new BusinessException(ErrorCode.QR_TOKEN_DISABLED, "Check-in QR code has been disabled");
         }
 
-        // 2. 定位校验
+        // 2. Location validation
         double distance = calculateDistance(
                 dto.getLatitude(), dto.getLongitude(),
                 COMPANY_LAT, COMPANY_LNG
         );
         if (distance > ALLOWED_RADIUS) {
             throw new BusinessException(ErrorCode.OUT_OF_RANGE,
-                    String.format("不在打卡范围内，距离公司 %.0f 米", distance));
+                    String.format("Out of check-in range, %.0fm from company", distance));
         }
 
-        // 3. 防重复打卡
+        // 3. Prevent duplicate check-in
         CheckinRecord existing = checkinMapper.findRecentRecord(userId, "SCAN", 5);
         if (existing != null) {
-            throw new BusinessException(ErrorCode.DUPLICATE_CHECKIN, "5 分钟内已扫码打卡");
+            throw new BusinessException(ErrorCode.DUPLICATE_CHECKIN, "Already scanned check-in within 5 minutes");
         }
 
-        // 4. 保存打卡记录
+        // 4. Save check-in record
         CheckinRecord record = new CheckinRecord();
         record.setUserId(userId);
         record.setCheckinType("SCAN");
@@ -1820,7 +1821,7 @@ public class ScanCheckinServiceImpl implements CheckinService {
         record.setCreateTime(LocalDateTime.now());
         checkinMapper.insert(record);
 
-        // 5. 推送通知
+        // 5. Push notification
         messageService.sendCheckinNotification(record);
 
         return CheckinVO.builder()
@@ -1831,23 +1832,23 @@ public class ScanCheckinServiceImpl implements CheckinService {
                 .build();
     }
 
-    // ... 其他方法省略
+    // ... other methods omitted
 }
 ```
 
-## 六、消息推送与回调
+## VI. Message Push and Callbacks
 
-### 6.1 应用消息推送
+### 6.1 Application Message Push
 
-消息推送是企业微信应用的重要能力，可用于考勤提醒、审批通知等场景。
+Message push is an important capability of WeCom applications, used for attendance reminders, approval notifications, and other scenarios.
 
-**发送应用消息**：
+**Send Application Message**:
 
 ```
 POST https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=TOKEN
 ```
 
-**文本消息**：
+**Text Message**:
 
 ```json
 {
@@ -1857,13 +1858,13 @@ POST https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=TOKEN
   "msgtype": "text",
   "agentid": 1000002,
   "text": {
-    "content": "您今天的上班打卡时间为 09:00，请及时打卡。"
+    "content": "Your clock-in time today is 09:00, please check in on time."
   },
   "duplicate_check_interval": 1800
 }
 ```
 
-**文本卡片消息**（推荐，可跳转到应用页面）：
+**Text Card Message** (recommended, can jump to application page):
 
 ```json
 {
@@ -1871,15 +1872,15 @@ POST https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=TOKEN
   "msgtype": "textcard",
   "agentid": 1000002,
   "textcard": {
-    "title": "考勤提醒",
-    "description": "距离上班打卡截止还有 15 分钟，请及时打卡。",
+    "title": "Attendance Reminder",
+    "description": "15 minutes until clock-in deadline, please check in on time.",
     "url": "https://attendance.yourcompany.com/checkin",
-    "btntxt": "去打卡"
+    "btntxt": "Go Check-in"
   }
 }
 ```
 
-**模板卡片消息**（支持交互按钮，适用于审批通知）：
+**Template Card Message** (supports interactive buttons, suitable for approval notifications):
 
 ```json
 {
@@ -1889,21 +1890,21 @@ POST https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=TOKEN
   "template_card": {
     "card_type": "button_interaction",
     "source": {
-      "desc": "考勤系统"
+      "desc": "Attendance System"
     },
     "main_title": {
-      "title": "补卡申请审批",
-      "desc": "李四申请补卡 2026-07-08 上午"
+      "title": "Make-up Check-in Approval",
+      "desc": "Li Si requests make-up check-in for 2026-07-08 morning"
     },
-    "sub_title_text": "补卡原因：忘记打卡，有工位监控为证",
+    "sub_title_text": "Reason: Forgot to check in, workstation surveillance footage as evidence",
     "button_list": [
       {
-        "text": "同意",
+        "text": "Approve",
         "style": 1,
         "key": "approve"
       },
       {
-        "text": "拒绝",
+        "text": "Reject",
         "style": 2,
         "key": "reject"
       }
@@ -1913,13 +1914,13 @@ POST https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=TOKEN
 }
 ```
 
-> 💡 **小程序跳转**：文本卡片和模板卡片的 `url` 字段支持小程序跳转路径（如 `#wecom-miniprogram://pages/index/index`），用户点击消息可直接打开小程序对应页面，而非 H5 链接。
+> 💡 **Mini Program Jump**: The `url` field of text cards and template cards supports mini program jump paths (e.g., `#wecom-miniprogram://pages/index/index`). Users can click the message to directly open the corresponding mini program page instead of an H5 link.
 
-**SpringBoot 消息推送实现**：
+**SpringBoot Message Push Implementation**:
 
 ```java
 /**
- * 企业微信消息推送 Service
+ * WeCom Message Push Service
  *
  * @author cuckoom
  */
@@ -1937,18 +1938,18 @@ public class WecomMessageService {
     private Integer agentId;
 
     /**
-     * 发送打卡成功通知
+     * Send check-in success notification
      */
     public void sendCheckinNotification(CheckinRecord record) {
         String userid = getUserId(record.getUserId());
         if (StrUtil.isBlank(userid)) {
-            log.warn("无法获取企业微信 userid，跳过推送: userId={}", record.getUserId());
+            log.warn("Unable to get WeCom userid, skipping push: userId={}", record.getUserId());
             return;
         }
 
-        String typeText = "CLOCK_IN".equals(record.getCheckinType()) ? "上班" : "下班";
+        String typeText = "CLOCK_IN".equals(record.getCheckinType()) ? "Clock-in" : "Clock-out";
         if ("SCAN".equals(record.getCheckinType())) {
-            typeText = "扫码";
+            typeText = "Scan";
         }
 
         Map<String, Object> message = new HashMap<>();
@@ -1957,23 +1958,23 @@ public class WecomMessageService {
         message.put("agentid", agentId);
 
         Map<String, Object> textCard = new HashMap<>();
-        textCard.put("title", "打卡成功");
+        textCard.put("title", "Check-in Successful");
         textCard.put("description", String.format(
-                "%s打卡成功\n时间：%s\n距公司：%d米",
+                "%s check-in successful\nTime: %s\nDistance from company: %dm",
                 typeText,
                 record.getCheckinTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
                 record.getDistance()
         ));
-        // 小程序跳转链接
+        // Mini program jump link
         textCard.put("url", "#wecom-miniprogram://pages/records/index");
-        textCard.put("btntxt", "查看记录");
+        textCard.put("btntxt", "View Records");
         message.put("textcard", textCard);
 
         sendMessage(message);
     }
 
     /**
-     * 发送考勤提醒
+     * Send attendance reminder
      */
     public void sendCheckinReminder(String wecomUserId, String content) {
         Map<String, Object> message = new HashMap<>();
@@ -1997,44 +1998,44 @@ public class WecomMessageService {
                     url, message, JSONObject.class
             );
             if (response != null && response.getIntValue("errcode") == 0) {
-                log.info("消息推送成功: {}", response.getString("msgid"));
+                log.info("Message push successful: {}", response.getString("msgid"));
             } else {
-                log.error("消息推送失败: {}", response);
+                log.error("Message push failed: {}", response);
             }
         } catch (Exception e) {
-            log.error("消息推送异常", e);
+            log.error("Message push exception", e);
         }
     }
 
     private String getUserId(Long userId) {
-        // 查询系统用户表，获取企业微信 userid
+        // Query system user table to get WeCom userid
         return userMapper.findWecomUserIdById(userId);
     }
 }
 ```
 
-### 6.2 数据回调
+### 6.2 Data Callbacks
 
-企业微信支持多种事件回调，包括通讯录变更、通讯录应用状态变更、模板卡片按钮回调等。回调以 HTTP POST 方式发送到开发者配置的 URL。
+WeCom supports various event callbacks, including address book changes, contact application status changes, template card button callbacks, etc. Callbacks are sent as HTTP POST to the developer-configured URL.
 
-#### 6.2.1 配置回调地址
+#### 6.2.1 Configuring Callback URL
 
-在企业微信管理后台配置：
+Configure in the WeCom Admin Console:
 
 ```
-应用管理 → 自建应用 → 接收消息 → 设置API接收
-  → URL: https://api.attendance.yourcompany.com/api/wecom/callback/message
-  → Token: 自定义 Token（用于签名验证）
-  → EncodingAESKey: 随机生成（用于消息加解密）
+App Management -> Self-built App -> Receive Messages -> Set API Reception
+  -> URL: https://api.attendance.yourcompany.com/api/wecom/callback/message
+  -> Token: Custom Token (for signature verification)
+  -> EncodingAESKey: Randomly generated (for message encryption/decryption)
 ```
 
-#### 6.2.2 回调验签与解密
+#### 6.2.2 Callback Signature Verification and Decryption
 
-企业微信回调消息使用 AES 加密，需要实现验签和解密：
+WeCom callback messages are encrypted with AES, requiring signature verification and decryption:
 
 ```java
 /**
- * 企业微信回调 Controller
+ * WeCom Callback Controller
  *
  * @author cuckoom
  */
@@ -2047,8 +2048,8 @@ public class WecomCallbackController {
     private WecomCallbackService callbackService;
 
     /**
-     * URL 验证（GET 请求）
-     * 企业微信配置回调地址时验证 URL 有效性
+     * URL verification (GET request)
+     * WeCom verifies URL validity when configuring callback URL
      */
     @GetMapping("/message")
     public String verifyUrl(
@@ -2057,17 +2058,17 @@ public class WecomCallbackController {
             @RequestParam("nonce") String nonce,
             @RequestParam("echostr") String echoStr
     ) {
-        log.info("企业微信回调 URL 验证");
+        log.info("WeCom callback URL verification");
         try {
             return callbackService.verifyUrl(msgSignature, timestamp, nonce, echoStr);
         } catch (Exception e) {
-            log.error("URL 验证失败", e);
+            log.error("URL verification failed", e);
             return "";
         }
     }
 
     /**
-     * 接收事件回调（POST 请求）
+     * Receive event callback (POST request)
      */
     @PostMapping(value = "/message", produces = "application/xml")
     public String receiveCallback(
@@ -2076,25 +2077,25 @@ public class WecomCallbackController {
             @RequestParam("nonce") String nonce,
             @RequestBody String encryptedMsg
     ) {
-        log.info("收到企业微信回调");
+        log.info("Received WeCom callback");
         try {
             callbackService.handleCallback(msgSignature, timestamp, nonce, encryptedMsg);
             return "success";
         } catch (Exception e) {
-            log.error("回调处理失败", e);
-            return "success"; // 返回 success 防止企业微信重试
+            log.error("Callback processing failed", e);
+            return "success"; // Return success to prevent WeCom retries
         }
     }
 }
 ```
 
-#### 6.2.3 模板卡片按钮回调
+#### 6.2.3 Template Card Button Callback
 
-当用户点击模板卡片消息中的按钮时，企业微信会向回调 URL 推送按钮事件：
+When users click buttons in template card messages, WeCom pushes button events to the callback URL:
 
 ```java
 /**
- * 企业微信回调 Service
+ * WeCom Callback Service
  *
  * @author cuckoom
  */
@@ -2118,14 +2119,14 @@ public class WecomCallbackService {
     private ApplyApprovalService approvalService;
 
     /**
-     * 处理回调事件
+     * Handle callback event
      */
     public void handleCallback(String msgSignature, String timestamp,
                                String nonce, String encryptedMsg) {
-        // 1. 解密消息
+        // 1. Decrypt message
         WecomCallbackMessage message = decryptMessage(msgSignature, timestamp, nonce, encryptedMsg);
 
-        // 2. 根据事件类型处理
+        // 2. Process by event type
         String eventType = message.getEventType();
         switch (eventType) {
             case "template_card_event":
@@ -2135,19 +2136,19 @@ public class WecomCallbackService {
                 handleContactChange(message);
                 break;
             default:
-                log.info("未处理的事件类型: {}", eventType);
+                log.info("Unhandled event type: {}", eventType);
         }
     }
 
     /**
-     * 处理模板卡片按钮点击事件
+     * Handle template card button click event
      */
     private void handleTemplateCardEvent(WecomCallbackMessage message) {
         String taskId = message.getTaskId();
         String buttonKey = message.getButtonKey();
         String userId = message.getUserId();
 
-        log.info("模板卡片按钮点击: taskId={}, buttonKey={}, userId={}",
+        log.info("Template card button click: taskId={}, buttonKey={}, userId={}",
                 taskId, buttonKey, userId);
 
         if ("approve".equals(buttonKey)) {
@@ -2158,74 +2159,74 @@ public class WecomCallbackService {
     }
 
     /**
-     * 处理通讯录变更
+     * Handle address book changes
      */
     private void handleContactChange(WecomCallbackMessage message) {
         String changeType = message.getChangeType();
         String userId = message.getUserId();
 
-        log.info("通讯录变更: type={}, userId={}", changeType, userId);
+        log.info("Address book change: type={}, userId={}", changeType, userId);
 
         switch (changeType) {
             case "create_user":
-                // 新增员工：创建系统用户
+                // New employee: create system user
                 break;
             case "update_user":
-                // 更新员工：同步信息
+                // Update employee: sync info
                 break;
             case "delete_user":
-                // 删除员工：停用账号
+                // Delete employee: disable account
                 break;
             default:
-                log.info("未处理的通讯录变更类型: {}", changeType);
+                log.info("Unhandled address book change type: {}", changeType);
         }
     }
 
     /**
-     * 解密企业微信回调消息
+     * Decrypt WeCom callback message
      */
     private WecomCallbackMessage decryptMessage(String msgSignature, String timestamp,
                                                  String nonce, String encryptedMsg) {
-        // 验证签名
+        // Verify signature
         String calculatedSignature = Sha1Util.sha1(
                 callbackToken, timestamp, nonce, encryptedMsg
         );
         if (!calculatedSignature.equals(msgSignature)) {
-            throw new BusinessException(ErrorCode.SIGN_VERIFY_FAILED, "回调签名验证失败");
+            throw new BusinessException(ErrorCode.SIGN_VERIFY_FAILED, "Callback signature verification failed");
         }
 
-        // AES 解密
+        // AES decrypt
         String decryptedXml = AesUtil.decrypt(encodingAesKey, encryptedMsg, corpId);
         return XmlUtil.parseXml(decryptedXml, WecomCallbackMessage.class);
     }
 }
 ```
 
-### 6.3 小程序与 H5 的 OAuth 差异对比
+### 6.3 OAuth Differences: Mini Program vs H5
 
-| 对比项 | 企业微信小程序 | H5 应用 |
+| Comparison Item | WeCom Mini Program | H5 Application |
 |--------|--------------|---------|
-| 认证入口 | `wx.qyLogin()` API 调用 | OAuth2 授权链接页面跳转 |
-| code 来源 | `wx.qyLogin` 返回的 `code` | OAuth2 重定向参数 `code` |
-| code 换取接口 | `jscode2session` | `getuserinfo` |
-| 用户感知 | 完全静默，无感知 | 可能需要用户同意授权（snsapi_base 静默，snsapi_privateinfo 需确认） |
-| 获取的信息 | userid + session_key | userid（snsapi_base）或详细信息（snsapi_privateinfo） |
-| 安全机制 | session_key 用于解密加密数据 | 无额外加密层 |
-| 域名要求 | 服务器域名（request 域名） | 可信域名（网页授权域名） |
-| 回调处理 | 无需重定向回调 | 需要 redirect_uri 回调页面处理 code |
-| 多端一致性 | 企业微信保证一致 | iOS/Android WebView 差异需处理 |
+| Auth Entry | `wx.qyLogin()` API call | OAuth2 authorization link page redirect |
+| Code Source | `code` returned by `wx.qyLogin` | `code` from OAuth2 redirect parameter |
+| Code Exchange API | `jscode2session` | `getuserinfo` |
+| User Awareness | Completely silent, no awareness | May require user consent (snsapi_base silent, snsapi_privateinfo requires confirmation) |
+| Information Obtained | userid + session_key | userid (snsapi_base) or detailed info (snsapi_privateinfo) |
+| Security Mechanism | session_key for decrypting encrypted data | No additional encryption layer |
+| Domain Requirements | Server domains (request domain) | Trusted domains (web authorization domain) |
+| Callback Handling | No redirect callback needed | Requires redirect_uri callback page to handle code |
+| Multi-platform Consistency | WeCom guarantees consistency | iOS/Android WebView differences need handling |
 
-**H5 OAuth2 授权流程（对比参考）**：
+**H5 OAuth2 Authorization Flow (for comparison)**:
 
 ```
-用户点击应用入口
-  → 企业微信构造授权链接，用户同意授权
-  → 重定向到回调地址，携带 code
-  → 后端用 code 换取 userid
-  → 建立会话，返回业务 token
+User clicks application entry
+  -> WeCom constructs authorization link, user consents
+  -> Redirects to callback URL with code
+  -> Backend exchanges code for userid
+  -> Establishes session, returns business token
 ```
 
-**构造授权链接**：
+**Construct Authorization Link**:
 
 ```
 https://open.weixin.qq.com/connect/oauth2/authorize
@@ -2238,31 +2239,31 @@ https://open.weixin.qq.com/connect/oauth2/authorize
 #wechat_redirect
 ```
 
-| 参数 | 说明 |
+| Parameter | Description |
 |------|------|
-| `appid` | 企业的 corpid |
-| `redirect_uri` | 回调地址，必须在可信域名下，需 URL 编码 |
-| `scope` | `snsapi_base`（静默授权，仅获取 userid）或 `snsapi_privateinfo`（获取详细信息） |
-| `agentid` | 应用 agentid |
-| `state` | 防 CSRF，原样返回 |
+| `appid` | Enterprise corpid |
+| `redirect_uri` | Callback URL, must be under trusted domain, needs URL encoding |
+| `scope` | `snsapi_base` (silent authorization, only gets userid) or `snsapi_privateinfo` (gets detailed info) |
+| `agentid` | Application agentid |
+| `state` | Anti-CSRF, returned as-is |
 
-## 七、安全设计
+## VII. Security Design
 
-### 7.1 access_token 安全管理
+### 7.1 access_token Security Management
 
-- access_token 绝不能暴露给前端，必须在服务端获取和管理
-- 建议使用缓存（如 Redis）存储，设置 TTL 为 7100 秒（留 100 秒余量）
-- 多实例部署时需用分布式锁防止并发刷新导致旧 token 失效
-- 定期监控 token 刷新频率，异常高频刷新说明可能存在泄漏
+- access_token must never be exposed to the frontend; it must be obtained and managed on the server side
+- Recommended to use cache (e.g., Redis) with TTL of 7100 seconds (100-second margin)
+- Multi-instance deployment requires distributed locks to prevent concurrent refresh invalidating old tokens
+- Monitor token refresh frequency regularly; abnormally high refresh frequency may indicate leakage
 
-### 7.2 敏感配置分离
+### 7.2 Sensitive Configuration Separation
 
-corpid、secret、agentid 等敏感信息不应硬编码或提交到代码仓库：
+Sensitive information such as corpid, secret, and agentid should not be hardcoded or committed to code repositories:
 
 ```yaml
-# application-prod.yml（生产环境）
+# application-prod.yml (production environment)
 wecom:
-  corpid: ${WECOM_CORPID}        # 环境变量注入
+  corpid: ${WECOM_CORPID}        # Environment variable injection
   agentid: ${WECOM_AGENTID}
   secret: ${WECOM_SECRET}
   callback:
@@ -2271,29 +2272,29 @@ wecom:
 ```
 
 ```bash
-# 环境变量注入（部署脚本）
+# Environment variable injection (deployment script)
 export WECOM_CORPID="your_corpid"
 export WECOM_AGENTID="your_agentid"
 export WECOM_SECRET="your_secret"
 ```
 
-### 7.3 小程序安全设计
+### 7.3 Mini Program Security Design
 
-小程序模式下需要注意以下安全要点：
+The following security points should be noted in mini program mode:
 
-**1. 服务器域名白名单**：
-- 所有 `wx.request`、`wx.uploadFile` 调用必须指向已配置的合法域名
-- 开发者工具可勾选「不校验合法域名」，但**生产环境必须配置正确**
-- 域名必须 HTTPS，不支持 HTTP 和 IP
+**1. Server Domain Whitelist**:
+- All `wx.request` and `wx.uploadFile` calls must point to configured valid domains
+- Developer tools can check "Do not verify valid domains", but **production environment must be configured correctly**
+- Domains must be HTTPS; HTTP and IP are not supported
 
-**2. JWT Token 管理**：
-- token 有效期不宜过长（建议 2-7 天），到期后通过 `wx.qyLogin` 静默刷新
-- token 存储在小程序 Storage 中，退出企业微信后自动清除
-- 服务端应记录 token 对应的设备信息，支持远程吊销
+**2. JWT Token Management**:
+- Token validity period should not be too long (recommended 2-7 days), refreshed silently via `wx.qyLogin` after expiration
+- Token is stored in mini program Storage, automatically cleared when exiting WeCom
+- Server should record device info corresponding to tokens, support remote revocation
 
-**3. 代码包安全**：
-- 小程序代码包会缓存在用户设备，不要在代码中硬编码任何敏感信息
-- 环境变量和接口地址通过构建时注入，区分 dev/prod 环境
+**3. Code Package Security**:
+- Mini program code packages are cached on user devices; never hardcode any sensitive information in code
+- Environment variables and API addresses are injected at build time, distinguishing dev/prod environments
 
 ```typescript
 // config/env.ts
@@ -2316,37 +2317,37 @@ export const config = {
 export const API_BASE_URL = config.apiUrl;
 ```
 
-**4. session_key 保护**：
-- `session_key` 仅在服务端使用，绝不能返回给前端
-- 用于解密加密数据（如手机号、位置等加密信息）
-- 缓存在 Redis 中，设置合理 TTL
+**4. session_key Protection**:
+- `session_key` is only used on the server side and must never be returned to the frontend
+- Used for decrypting encrypted data (e.g., phone numbers, location, etc.)
+- Cached in Redis with a reasonable TTL
 
-### 7.4 API 安全
+### 7.4 API Security
 
-- 所有业务接口需认证（JWT），OAuth2 回调和企业微信回调接口除外
-- 防重放：接口签名 + 时间戳校验
-- 限流：防止恶意调用，使用 Redis + 令牌桶或滑动窗口
-- 输入校验：使用 `@Valid` 注解校验请求参数
+- All business APIs require authentication (JWT), except OAuth2 callbacks and WeCom callback endpoints
+- Anti-replay: API signature + timestamp verification
+- Rate limiting: prevent malicious calls using Redis + token bucket or sliding window
+- Input validation: use `@Valid` annotation to validate request parameters
 
 ```java
 /**
- * 接口限流注解
+ * API Rate Limit Annotation
  *
  * @author cuckoom
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RateLimit {
-    /** 限流 key 前缀 */
+    /** Rate limit key prefix */
     String key() default "";
-    /** 时间窗口内允许的请求数 */
+    /** Number of requests allowed within the time window */
     int limit() default 60;
-    /** 时间窗口（秒） */
+    /** Time window (seconds) */
     int window() default 60;
 }
 
 /**
- * 限流切面
+ * Rate limit aspect
  */
 @Aspect
 @Component
@@ -2367,7 +2368,7 @@ public class RateLimitAspect {
         }
 
         if (count != null && count > rateLimit.limit()) {
-            throw new BusinessException(ErrorCode.RATE_LIMIT_EXCEEDED, "请求过于频繁，请稍后再试");
+            throw new BusinessException(ErrorCode.RATE_LIMIT_EXCEEDED, "Too many requests, please try again later");
         }
 
         return joinPoint.proceed();
@@ -2375,35 +2376,35 @@ public class RateLimitAspect {
 }
 ```
 
-### 7.5 数据安全
+### 7.5 Data Security
 
-- 打卡照片等敏感数据存储在内网文件系统，不对外暴露
-- 用户手机号等敏感字段加密存储（AES-256）
-- 数据库定期备份
-- 打卡记录的定位数据需脱敏展示（精确到百米级）
+- Sensitive data such as check-in photos stored on internal file systems, not publicly accessible
+- Sensitive fields like user phone numbers encrypted with AES-256
+- Regular database backups
+- Location data in check-in records should be masked for display (accurate to ~100m)
 
-## 八、避坑指南
+## VIII. Pitfall Guide
 
-### 8.1 access_token 并发刷新
+### 8.1 access_token Concurrent Refresh
 
-**问题**：多实例同时刷新 access_token，导致旧 token 失效，其他实例请求报错。
+**Problem**: Multiple instances refreshing access_token simultaneously causes old tokens to be invalidated, and other instances' requests fail.
 
-**方案**：使用分布式锁确保只有一个实例刷新，其他实例等待。双重检查模式：获取锁后再次检查缓存，避免重复刷新。详见第五章 `WecomTokenManager` 实现。
+**Solution**: Use distributed locks to ensure only one instance refreshes while others wait. Double-check pattern: after acquiring the lock, check cache again to avoid redundant refresh. See the `WecomTokenManager` implementation in Chapter V for details.
 
-### 8.2 小程序 code 只能用一次
+### 8.2 Mini Program code Can Only Be Used Once
 
-**问题**：`wx.qyLogin` 返回的 `code` 只能使用一次，且 5 分钟内有效。如果重复使用同一 code 调用 `jscode2session`，会报错。
+**Problem**: The `code` returned by `wx.qyLogin` can only be used once and is valid for 5 minutes. Reusing the same code to call `jscode2session` will result in an error.
 
-**方案**：
-- 小程序端每次启动都调用 `wx.qyLogin` 获取新的 code
-- 后端收到 code 后立即换取，不缓存
-- 换取成功后签发 JWT，后续请求使用 JWT 而非 code
+**Solution**:
+- Mini program side calls `wx.qyLogin` on every launch to get a new code
+- Backend exchanges code immediately upon receipt, does not cache it
+- After successful exchange, issues JWT; subsequent requests use JWT instead of code
 
-### 8.3 requiredPrivateInfos 声明缺失
+### 8.3 Missing requiredPrivateInfos Declaration
 
-**问题**：调用 `wx.getLocation` 报错 `getLocation is not a function` 或提示需要在 app.json 中声明。
+**Problem**: Calling `wx.getLocation` fails with `getLocation is not a function` or a prompt to declare it in app.json.
 
-**方案**：在 `app.json` 中声明所需隐私 API：
+**Solution**: Declare the required privacy APIs in `app.json`:
 
 ```json
 {
@@ -2414,41 +2415,41 @@ public class RateLimitAspect {
 }
 ```
 
-同时需要在 `permission` 字段声明权限用途说明，否则审核可能被拒。
+Also declare permission purpose description in the `permission` field, otherwise the review may be rejected.
 
-### 8.4 定位精度与防作弊
+### 8.4 Location Accuracy and Anti-cheating
 
-**问题**：GPS 定位精度约 10-50 米，存在漂移；部分用户可能使用虚拟定位软件作弊。
+**Problem**: GPS location accuracy is about 10-50 meters with drift; some users may use virtual location software to cheat.
 
-**方案**：
-- 允许半径设为 100-300 米，过于严格会导致误报
-- 小程序端请求高精度定位（`isHighAccuracy: true`），并检查 `accuracy` 字段，精度差于 100 米时提示用户移到空旷处
-- 后端做异常检测：频繁补卡、非工作日打卡、异地打卡等
-- 照片打卡加入水印（时间 + 位置 + 设备指纹）
-- 扫码打卡结合定位双重校验
-- 检测模拟定位：小程序可通过 `wx.getLocation` 的 `accuracy` 判断，模拟定位通常精度为 0 或固定值
+**Solution**:
+- Set allowed radius to 100-300 meters; too strict will cause false positives
+- Mini program requests high-accuracy positioning (`isHighAccuracy: true`), and checks the `accuracy` field; if accuracy is worse than 100m, prompt the user to move to an open area
+- Backend performs anomaly detection: frequent make-up check-ins, non-workday check-ins, remote location check-ins, etc.
+- Photo check-in adds watermark (time + location + device fingerprint)
+- Scan check-in combined with location for dual verification
+- Detect simulated location: mini program can check via `wx.getLocation`'s `accuracy`; simulated location typically has accuracy of 0 or a fixed value
 
-### 8.5 小程序服务器域名配置
+### 8.5 Mini Program Server Domain Configuration
 
-**问题**：开发环境后端地址是 `http://localhost:8080`，小程序请求失败提示「不在以下 request 合法域名列表中」。
+**Problem**: Development environment backend address is `http://localhost:8080`, mini program requests fail with "not in the following request valid domain list".
 
-**方案**：
-- 开发阶段：微信开发者工具 → 详情 → 本地设置 → 勾选「不校验合法域名、web-view（业务域名）、TLS 版本以及 HTTPS 证书」
-- 体验版和正式版：必须在管理后台配置服务器域名，不支持 localhost 和 IP
-- request、uploadFile、downloadFile 域名需分别配置
-- 每月最多修改 50 次域名配置
+**Solution**:
+- Development phase: WeChat Developer Tools -> Details -> Local Settings -> Check "Do not verify valid domains, web-view (business domain), TLS version, and HTTPS certificate"
+- Trial and production versions: must configure server domains in the admin console; localhost and IP are not supported
+- request, uploadFile, downloadFile domains need to be configured separately
+- Maximum 50 domain configuration changes per month
 
-### 8.6 wx.chooseImage 已弃用
+### 8.6 wx.chooseImage Deprecated
 
-**问题**：使用 `wx.chooseImage` 时部分设备返回异常。
+**Problem**: Using `wx.chooseImage` returns abnormal results on some devices.
 
-**方案**：迁移到 `wx.chooseMedia`，支持同时选择图片和视频，API 更稳定：
+**Solution**: Migrate to `wx.chooseMedia`, which supports selecting both images and videos and has a more stable API:
 
 ```typescript
-// 旧 API（已弃用）
+// Old API (deprecated)
 wx.chooseImage({ ... });
 
-// 新 API（推荐）
+// New API (recommended)
 wx.chooseMedia({
   count: 1,
   mediaType: ['image'],
@@ -2457,45 +2458,45 @@ wx.chooseMedia({
 });
 ```
 
-### 8.7 小程序版本发布与回退
+### 8.7 Mini Program Version Publishing and Rollback
 
-**问题**：小程序需要提交审核才能发布，审核期间线上版本仍是旧版，如果有紧急 bug 无法立即回退。
+**Problem**: Mini programs require review submission before publishing. During review, the online version remains the old version, and if there's an urgent bug, it cannot be rolled back immediately.
 
-**方案**：
-- 小程序支持「体验版」和「正式版」分离，开发和测试在体验版进行
-- 正式版发布前先用体验版完整测试
-- 利用企业微信的灰度发布能力，先小范围发布再全量
-- 后端 API 保持向后兼容，避免小程序旧版本调用失败
-- 紧急情况下可在管理后台「撤回已发布版本」（有次数限制）
+**Solution**:
+- Mini programs support separate "trial version" and "production version"; development and testing happen in trial version
+- Thoroughly test in trial version before publishing production version
+- Utilize WeCom's grayscale publishing capability: release to a small range first, then full release
+- Backend APIs maintain backward compatibility to prevent old mini program versions from failing
+- In emergencies, you can "withdraw published version" in the admin console (limited number of times)
 
-### 8.8 H5 JS-SDK 签名 URL iOS/Android 差异
+### 8.8 H5 JS-SDK Signature URL iOS/Android Differences
 
-**问题**：H5 模式下 JS-SDK 签名 URL 在 iOS 和 Android 上处理方式不同：
-- Android：使用当前页面 URL
-- iOS：使用入口页 URL（第一次进入应用的 URL）
+**Problem**: In H5 mode, JS-SDK signature URL is handled differently on iOS and Android:
+- Android: uses the current page URL
+- iOS: uses the entry page URL (the URL when first entering the application)
 
-**方案**：iOS 下记录入口 URL，后续签名均使用该 URL；Android 使用当前页面 URL。小程序模式无此问题，是选择小程序的一大优势。
+**Solution**: On iOS, record the entry URL and use it for all subsequent signatures; on Android, use the current page URL. Mini program mode does not have this issue, which is a major advantage of choosing mini programs.
 
-### 8.9 企业微信 API 频率限制
+### 8.9 WeCom API Rate Limits
 
-| API | 限制 |
+| API | Limit |
 |-----|------|
-| 获取 access_token | 同一企业每 5 分钟最多 1000 次 |
-| 发送消息 | 每应用每分钟最多 200 次 |
-| 通讯录读取 | 每天最多 10000 次 |
-| 获取打卡数据 | 每天最多 1000 次 |
-| jscode2session | 每应用每分钟最多 600 次 |
+| Get access_token | Max 1000 times per enterprise per 5 minutes |
+| Send message | Max 200 times per application per minute |
+| Address book read | Max 10000 times per day |
+| Get check-in data | Max 1000 times per day |
+| jscode2session | Max 600 times per application per minute |
 
-高频率调用需做缓存和批量处理。
+High-frequency calls require caching and batch processing.
 
-### 8.10 小程序包体积限制
+### 8.10 Mini Program Package Size Limit
 
-**问题**：小程序主包超过 2MB 无法预览/上传，总包超过 20MB 无法发布。
+**Problem**: Mini program main package exceeding 2MB cannot be previewed/uploaded; total package exceeding 20MB cannot be published.
 
-**方案**：
-- 将打卡记录列表、补卡申请等非核心页面放入分包
-- 图片资源上传到 CDN，不在代码包中内嵌
-- 使用 `wx.subPackages` 配置分包
+**Solution**:
+- Put non-core pages like check-in record lists and make-up check-in applications into subpackages
+- Upload image resources to CDN, do not embed them in the code package
+- Use `wx.subPackages` configuration for subpackages
 
 ```json
 {
@@ -2512,9 +2513,9 @@ wx.chooseMedia({
 }
 ```
 
-## 九、项目搭建实战补充
+## IX. Project Setup Supplement
 
-### 9.1 后端项目结构
+### 9.1 Backend Project Structure
 
 ```
 attendance-backend/
@@ -2522,16 +2523,16 @@ attendance-backend/
 ├── src/main/java/com/company/attendance/
 │   ├── AttendanceApplication.java
 │   ├── config/
-│   │   ├── WebMvcConfig.java          # Web 配置（拦截器注册、CORS）
-│   │   ├── WecomConfig.java           # 企业微信配置类
-│   │   ├── RestTemplateConfig.java     # RestTemplate 配置
-│   │   └── RedisConfig.java           # Redis 配置
+│   │   ├── WebMvcConfig.java          # Web configuration (interceptor registration, CORS)
+│   │   ├── WecomConfig.java           # WeCom configuration class
+│   │   ├── RestTemplateConfig.java     # RestTemplate configuration
+│   │   └── RedisConfig.java           # Redis configuration
 │   ├── controller/
-│   │   ├── QyAuthController.java       # 认证（小程序登录）
-│   │   ├── CheckinController.java      # 考勤打卡
-│   │   ├── CheckinPhotoController.java # 拍照打卡
-│   │   ├── ScanCheckinController.java  # 扫码打卡
-│   │   └── WecomCallbackController.java # 企业微信回调
+│   │   ├── QyAuthController.java       # Authentication (mini program login)
+│   │   ├── CheckinController.java      # Attendance check-in
+│   │   ├── CheckinPhotoController.java # Photo check-in
+│   │   ├── ScanCheckinController.java  # Scan check-in
+│   │   └── WecomCallbackController.java # WeCom callbacks
 │   ├── service/
 │   │   ├── QyAuthService.java
 │   │   ├── CheckinService.java
@@ -2557,7 +2558,7 @@ attendance-backend/
             └── 001-create-checkin-table.xml
 ```
 
-### 9.2 核心配置文件
+### 9.2 Core Configuration File
 
 ```yaml
 # application.yml
@@ -2581,7 +2582,7 @@ spring:
     enabled: true
     change-log: classpath:db/changelog-master.xml
 
-# 企业微信配置
+# WeCom configuration
 wecom:
   corpid: ${WECOM_CORPID}
   agentid: ${WECOM_AGENTID}
@@ -2590,17 +2591,17 @@ wecom:
     token: ${WECOM_CALLBACK_TOKEN}
     encoding-aes-key: ${WECOM_CALLBACK_AES_KEY}
 
-# 考勤配置
+# Attendance configuration
 attendance:
   company:
     latitude: 30.2741
     longitude: 120.1551
   allowed-radius: 200
 
-# JWT 配置
+# JWT configuration
 jwt:
   secret: ${JWT_SECRET}
-  expiration: 604800  # 7 天（秒）
+  expiration: 604800  # 7 days (seconds)
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
@@ -2609,10 +2610,10 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 ```
 
-### 9.3 数据库表设计
+### 9.3 Database Table Design
 
 ```sql
--- 打卡记录表
+-- Check-in record table
 CREATE TABLE checkin_record (
     id              BIGSERIAL PRIMARY KEY,
     user_id         BIGINT       NOT NULL,
@@ -2628,7 +2629,7 @@ CREATE TABLE checkin_record (
     update_time     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 扫码 token 表
+-- QR code token table
 CREATE TABLE qr_token (
     id              BIGSERIAL PRIMARY KEY,
     token           VARCHAR(100) NOT NULL UNIQUE,
@@ -2638,7 +2639,7 @@ CREATE TABLE qr_token (
     create_time     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 用户表
+-- User table
 CREATE TABLE sys_user (
     id              BIGSERIAL PRIMARY KEY,
     wecom_user_id   VARCHAR(50)  NOT NULL UNIQUE,
@@ -2652,25 +2653,25 @@ CREATE TABLE sys_user (
     update_time     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 索引
+-- Indexes
 CREATE INDEX idx_checkin_user_time ON checkin_record (user_id, checkin_time);
 CREATE INDEX idx_checkin_type ON checkin_record (checkin_type);
 CREATE INDEX idx_qr_token_token ON qr_token (token);
 ```
 
-## 总结
+## Conclusion
 
-企业微信应用开发的核心在于理解以下关键环节：
+The core of WeCom application development lies in understanding the following key aspects:
 
-- **开发模式选型**：小程序模式体验更接近原生，API 调用更直接，适合考勤等高频场景；H5 模式灵活度高，适合频繁迭代的内容型应用
-- **认证体系**：corpid/secret/agentid 三要素 → access_token 全局票据 → 小程序 `wx.qyLogin` 获取 code → 后端 `jscode2session` 换取 userid
-- **设备能力调用**：小程序通过 `wx.getLocation`、`wx.chooseMedia`、`wx.scanCode` 直接调用原生能力，无需 JS-SDK 签名
-- **后端 API 对接**：access_token 管理（Redis 缓存 + 分布式锁）、通讯录同步、消息推送（文本卡片 / 模板卡片）
-- **安全设计**：敏感配置环境变量注入、JWT 认证、session_key 保护、API 限流、数据脱敏
-- **部署要求**：小程序服务器域名 HTTPS 硬性要求，后端集中管理 access_token
+- **Development Mode Selection**: Mini program mode provides a more native experience with more direct API calls, suitable for high-frequency scenarios like attendance; H5 mode offers higher flexibility, suitable for frequently iterated content-oriented applications
+- **Authentication System**: corpid/secret/agentid three elements -> access_token global ticket -> mini program `wx.qyLogin` to get code -> backend `jscode2session` to exchange for userid
+- **Device Capability Access**: Mini programs call native capabilities directly via `wx.getLocation`, `wx.chooseMedia`, `wx.scanCode` without JS-SDK signatures
+- **Backend API Integration**: access_token management (Redis cache + distributed lock), address book sync, message push (text card / template card)
+- **Security Design**: Sensitive configuration via environment variables, JWT authentication, session_key protection, API rate limiting, data masking
+- **Deployment Requirements**: Mini program server domains require HTTPS mandatorily; backend centrally manages access_token
 
-关键避坑点：access_token 并发刷新、小程序 code 一次性使用、`requiredPrivateInfos` 声明、服务器域名配置、包体积限制、API 频率限制。
+Key pitfalls: access_token concurrent refresh, mini program code single-use, `requiredPrivateInfos` declaration, server domain configuration, package size limits, API rate limits.
 
-官方文档：[https://developer.work.weixin.qq.com/document/](https://developer.work.weixin.qq.com/document/)
+Official documentation: [https://developer.work.weixin.qq.com/document/](https://developer.work.weixin.qq.com/document/)
 
-> 本文以考勤系统为线索，以企业微信小程序模式为主线，梳理了应用开发的完整技术链路。核心模式（`wx.qyLogin` 认证 → 原生 API 调用 → 后端 API 对接 → 消息推送 → 回调处理）适用于所有类型的企业微信小程序应用开发。H5 模式作为对比，在需要快速迭代或内容展示为主的场景中仍有其不可替代的优势。
+> This article uses an attendance system as a thread and WeCom Mini Program mode as the main line to outline the complete technical chain of application development. The core pattern (`wx.qyLogin` authentication -> native API calls -> backend API integration -> message push -> callback handling) applies to all types of WeCom mini program application development. H5 mode, as a comparison, still has its irreplaceable advantages in scenarios requiring rapid iteration or primarily content display.
