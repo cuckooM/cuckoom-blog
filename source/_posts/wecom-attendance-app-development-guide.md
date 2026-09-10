@@ -15,7 +15,7 @@ categories:
 
 很多团队的企业微信开发并不是从零做一个新系统，而是面对这样一个更常见、也更现实的场景：**业务系统已经存在并且运行多年**——考勤模块早已上线，审批流基于 Activiti 实现了会签、或签、按组织架构逐级审批等复杂流程，审批过程还会回查和联动考勤数据。现在的诉求是：把这套系统搬到企业微信里，让员工在企微工作台点开就能用，**不用再输用户名密码，进来就是自己的考勤和待办**。
 
-这种前提下，H5 应用模式往往是比小程序更合适的选择：现有系统如果本身就是 Web 架构（Vue/Angular + SpringBoot），H5 可以直接复用前端页面与后端接口，配合企业微信 OAuth2 网页授权（`snsapi_base`）实现完全静默的自动登录（免登），部署即生效、无需审核发版，审批表单频繁调整时迭代成本最低。
+这种前提下，H5 应用模式往往是比小程序更合适的选择：现有系统本身就是 Angular + SpringBoot 的 Web 架构，H5 可以直接复用前端页面与后端接口，配合企业微信 OAuth2 网页授权（`snsapi_base`）实现完全静默的自动登录（免登），部署即生效、无需审核发版，审批表单频繁调整时迭代成本最低。
 
 本文以「**已有考勤管理系统 + Activiti 复杂审批流**」为背景，**以 H5 模式为主线**，系统讲解：如何在不重写业务系统的前提下完成企业微信端集成，重点剖析 OAuth2 静默自动登录的完整链路、企业微信账号与系统账号的绑定映射、JS-SDK 设备能力调用，以及 Activiti 会签/或签/组织架构审批与考勤联动在企微端的落地（待办推送、卡片一键审批、组织架构同步）。
 
@@ -34,7 +34,7 @@ categories:
   - **按组织架构审批**：审批人根据申请人所在部门动态确定（部门负责人 → 分管领导 → HRBP）
   - **考勤数据联动**：审批流程中会读取/回写考勤数据（如补卡审批通过后自动修正打卡记录，年假审批通过后扣减假期余额）
 - **账号体系**：系统有自己的用户表、角色权限体系（如 Spring Security + JWT/Session）
-- **前端**：已有 Web 端，Vue 或 Angular 单页应用
+- **前端**：已有 Web 端，Angular 单页应用（TypeScript）
 
 要解决的核心问题只有两个：
 
@@ -47,7 +47,7 @@ categories:
 
 | 对比维度 | H5 应用（本文方案） | 企业微信小程序 |
 |----------|--------------------|----------------|
-| 复用现有 Web 前端 | 直接复用现有 Vue/Angular 页面 | 需用 WXML/WXSS 重写全部页面 |
+| 复用现有 Web 前端 | 直接复用现有 Angular 页面 | 需用 WXML/WXSS 重写全部页面 |
 | 复用现有后端接口 | 直接复用，仅加一个 OAuth 登录端点 | 同样复用，但前端全部重做 |
 | 自动登录 | OAuth2 `snsapi_base` 静默授权，全程无感 | `wx.qyLogin` 静默，也无感 |
 | 发布迭代 | 部署即生效，审批表单随时改 | 需提审、发版，紧急修复慢 |
@@ -70,7 +70,7 @@ categories:
                 ▼
 ┌───────────────────────────────┐
 │   H5 前端（复用现有 Web 工程）  │
-│  Vue/Angular SPA + wx JS-SDK  │
+│  Angular SPA + wx JS-SDK     │
 │  路由守卫：无 token → 跳 OAuth  │
 └───────────────┬───────────────┘
                 │ HTTPS（JWT）
@@ -167,9 +167,11 @@ H5 本地开发的核心难点是：OAuth 回调和 JS-SDK 要求可信域名 + 
 # 例如映射出 https://dev-attendance.yourcompany.com
 frpc -c frpc.ini
 
-# 前端 dev server 允许宿主域名访问（Vite 示例）
-# vite.config.ts
-server: { host: '0.0.0.0', port: 5173, https: false }
+# Angular dev server 允许宿主域名访问（angular.json）
+# serve 选项：host 设为 0.0.0.0，默认端口 4200
+# angular.json -> projects/<name>.architect.serve.options
+{ "host": "0.0.0.0", "port": 4200 }
+# 或命令行：ng serve --host 0.0.0.0 --port 4200
 ```
 
 将穿透域名加入管理后台可信域名（开发阶段），把校验文件放到本地静态目录即可通过校验。
@@ -194,38 +196,42 @@ mvn spring-boot:run -Dspring-boot.run.profiles=dev
 
 ## 三、H5 前端工程接入
 
-### 3.1 目录结构（复用现有 Vue 工程，新增移动端模块）
+### 3.1 目录结构（复用现有 Angular 工程，新增移动端模块）
 
-不需要新建工程。在现有 Vue3 + TypeScript 工程中新增移动端路由与企微适配层即可：
+不需要新建工程。在现有 Angular + TypeScript 工程中新增一个移动端懒加载模块（feature module / routes）与企微适配层即可：
 
 ```
 attendance-web/
 ├── src/
 │   ├── main.ts
-│   ├── router/
-│   │   ├── index.ts                 # 路由总入口（PC/移动分流）
-│   │   └── mobile.routes.ts         # 移动端路由
-│   ├── views/
-│   │   └── mobile/                  # 企微内 H5 页面
-│   │       ├── CheckinView.vue      # 打卡首页（定位/拍照/扫码入口）
-│   │       ├── RecordsView.vue      # 打卡记录
-│   │       ├── todo/
-│   │       │   ├── TodoList.vue     # 审批待办列表（Activiti tasks）
-│   │       │   └── ApprovalDetail.vue # 审批详情（会签/或签进度）
-│   │       └── apply/
-│   │           └── MakeUpApply.vue  # 补卡申请（触发 Activiti 流程）
-│   ├── api/                         # 复用现有 API 封装
-│   │   ├── request.ts               # axios（自动注入 JWT、401 重登）
-│   │   ├── checkin.ts
-│   │   └── approval.ts
-│   └── wecom/                       # 企微适配层（本次新增的核心）
-│       ├── env.ts                   # 是否企微环境、UA 判断
-│       ├── oauth.ts                 # OAuth2 免登跳转逻辑
-│       ├── jssdk.ts                 # wx.config / agentConfig / 签名
-│       └── device.ts                # 定位、拍照、扫码封装
-├── public/
-│   └── WW_verify_xxxx.txt           # 域名归属校验文件
-└── vite.config.ts
+│   ├── index.html                   # 也可在此 <script> 引入 jweixin
+│   ├── app/
+│   │   ├── app.routes.ts            # 路由总入口（PC/移动分流）
+│   │   ├── mobile/                  # 企微内 H5 移动端（懒加载模块）
+│   │   │   ├── mobile.routes.ts     # 移动端子路由
+│   │   │   ├── guards/
+│   │   │   │   └── wecom-auth.guard.ts   # 免登路由守卫（CanActivate）
+│   │   │   └── pages/
+│   │   │       ├── checkin/checkin.component.ts      # 打卡首页
+│   │   │       ├── records/records.component.ts      # 打卡记录
+│   │   │       ├── todo/todo-list.component.ts       # 审批待办（Activiti tasks）
+│   │   │       ├── todo/approval-detail.component.ts # 审批详情（会签/或签进度）
+│   │   │       ├── apply/makeup-apply.component.ts   # 补卡申请（触发流程）
+│   │   │       └── oauth/oauth-callback.component.ts # OAuth 回调落地页
+│   │   ├── core/
+│   │   │   ├── interceptors/
+│   │   │   │   └── auth.interceptor.ts   # HttpClient 拦截器（注入 JWT、401 重登）
+│   │   │   └── services/            # 复用现有业务 Service
+│   │   │       ├── checkin.service.ts
+│   │   │       └── approval.service.ts
+│   │   └── wecom/                   # 企微适配层（本次新增的核心）
+│   │       ├── env.service.ts       # 是否企微环境、UA 判断
+│   │       ├── oauth.service.ts     # OAuth2 免登跳转逻辑
+│   │       ├── jssdk.service.ts     # wx.config / agentConfig / 签名
+│   │       └── device.service.ts    # 定位、拍照、扫码封装
+├── public/ （或 src/）
+│   └── WW_verify_xxxx.txt           # 域名归属校验文件（放静态资源根）
+└── angular.json
 ```
 
 ### 3.2 引入企业微信 JS-SDK
@@ -239,51 +245,101 @@ npm install weixin-js-sdk --save
 ```
 
 ```typescript
-// src/wecom/env.ts
+// src/app/wecom/env.service.ts
+import { Injectable } from '@angular/core';
 
-/** 判断当前是否运行在企业微信客户端内 */
-export function isInWecom(): boolean {
-  const ua = navigator.userAgent.toLowerCase();
-  // 企业微信 UA 同时包含 wxwork 与 micromessenger
-  return /wxwork/.test(ua) && /micromessenger/.test(ua);
-}
+@Injectable({ providedIn: 'root' })
+export class WecomEnvService {
+  /** 当前是否运行在企业微信客户端内 */
+  isInWecom(): boolean {
+    const ua = navigator.userAgent.toLowerCase();
+    // 企业微信 UA 同时包含 wxwork 与 micromessenger
+    return /wxwork/.test(ua) && /micromessenger/.test(ua);
+  }
 
-/** 判断 iOS（JS-SDK 签名 URL 处理有差异，见第五章） */
-export function isIOS(): boolean {
-  return /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+  /** 是否 iOS（JS-SDK 签名 URL 处理有差异，见第五章） */
+  isIOS(): boolean {
+    return /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+  }
 }
 ```
 
 ### 3.3 路由与免登守卫
 
-移动端所有业务路由都经过同一个守卫：没有系统 token 就发起 OAuth 免登，登录成功后回到原页面。这是实现「点开应用自动登录」的总开关，第四章详细展开。
+移动端所有业务路由都挂在同一个 `CanActivate` 守卫下：没有系统 token 就发起 OAuth 免登，登录成功后回到原页面。这是实现「点开应用自动登录」的总开关，第四章详细展开。
 
 ```typescript
-// src/router/mobile.routes.ts
-import { createRouter, createWebHistory } from 'vue-router';
-import { ensureLogin } from '@/wecom/oauth';
+// src/app/mobile/mobile.routes.ts
+import { Routes } from '@angular/router';
+import { WecomAuthGuard } from './guards/wecom-auth.guard';
 
-const routes = [
-  { path: '/mobile', redirect: '/mobile/checkin' },
-  { path: '/mobile/checkin', component: () => import('@/views/mobile/CheckinView.vue'), meta: { auth: true } },
-  { path: '/mobile/records', component: () => import('@/views/mobile/RecordsView.vue'), meta: { auth: true } },
-  { path: '/mobile/todo', component: () => import('@/views/mobile/todo/TodoList.vue'), meta: { auth: true } },
-  { path: '/mobile/approval/:taskId', component: () => import('@/views/mobile/todo/ApprovalDetail.vue'), meta: { auth: true } },
-  { path: '/mobile/apply/makeup', component: () => import('@/views/mobile/apply/MakeUpApply.vue'), meta: { auth: true } },
-  // OAuth 回调落地页（无需 auth）
-  { path: '/mobile/oauth/callback', component: () => import('@/views/mobile/OAuthCallback.vue'), meta: { auth: false } },
+export const MOBILE_ROUTES: Routes = [
+  { path: '', pathMatch: 'full', redirectTo: 'checkin' },
+  {
+    path: 'checkin',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () => import('./pages/checkin/checkin.component').then(m => m.CheckinComponent),
+  },
+  {
+    path: 'records',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () => import('./pages/records/records.component').then(m => m.RecordsComponent),
+  },
+  {
+    path: 'todo',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () => import('./pages/todo/todo-list.component').then(m => m.TodoListComponent),
+  },
+  {
+    path: 'approval/:taskId',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () =>
+      import('./pages/todo/approval-detail.component').then(m => m.ApprovalDetailComponent),
+  },
+  {
+    path: 'apply/makeup',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () =>
+      import('./pages/apply/makeup-apply.component').then(m => m.MakeupApplyComponent),
+  },
+  // OAuth 回调落地页：不挂守卫
+  {
+    path: 'oauth/callback',
+    loadComponent: () =>
+      import('./pages/oauth/oauth-callback.component').then(m => m.OauthCallbackComponent),
+  },
 ];
+```
 
-const router = createRouter({ history: createWebHistory(), routes });
+```typescript
+// src/app/mobile/guards/wecom-auth.guard.ts
+import { inject } from '@angular/core';
+import { CanActivateFn } from '@angular/router';
+import { WecomOAuthService } from '../../wecom/oauth.service';
 
-router.beforeEach(async (to) => {
-  if (to.meta.auth === false) return true;
-  // 核心：确保已登录，未登录则内部跳转 OAuth（函数内处理重定向）
-  const ok = await ensureLogin(to.fullPath);
-  return ok;
-});
+export const WecomAuthGuard: CanActivateFn = (route, state) => {
+  const oauth = inject(WecomOAuthService);
 
-export default router;
+  // 核心：确保已登录；未登录时 redirectToWecomAuth 内部触发整页跳转到 OAuth
+  if (oauth.hasToken()) {
+    return true;
+  }
+  oauth.redirectToWecomAuth(state.url);   // 会离开当前页
+  return new Promise<boolean>(() => false); // 阻塞本次导航，等待整页跳转
+};
+```
+
+在根路由中以 `mobile` 路径懒加载整个移动端模块：
+
+```typescript
+// src/app/app.routes.ts
+export const APP_ROUTES: Routes = [
+  {
+    path: 'mobile',
+    loadChildren: () => import('./mobile/mobile.routes').then(m => m.MOBILE_ROUTES),
+  },
+  // ...PC 管理端路由
+];
 ```
 ## 四、OAuth2 静默自动登录（免登）完整链路
 
@@ -360,52 +416,56 @@ https://open.weixin.qq.com/connect/oauth2/authorize
 | `state` | 自定义参数，企微原样带回；用于防 CSRF + 携带回跳目标路径 |
 | `#wechat_redirect` | 固定后缀，必须以 hash 形式结尾 |
 
-前端封装（`src/wecom/oauth.ts`）：
+前端封装为可注入的 `WecomOAuthService`（`src/app/wecom/oauth.service.ts`）：
 
 ```typescript
-import { isInWecom } from './env';
+import { Injectable, inject } from '@angular/core';
+import { WecomEnvService } from './env.service';
 
-const CORP_ID = 'ww your_corpid';            // corpid 不属于高敏感信息，可放前端
-const AGENT_ID = '1000002';                   // agentid 同样可公开
-const CALLBACK = 'https://attendance.yourcompany.com/mobile/oauth/callback';
+@Injectable({ providedIn: 'root' })
+export class WecomOAuthService {
+  private readonly env = inject(WecomEnvService);
 
-/** 生成随机 state，同时把"登录后要去的页面"暂存 sessionStorage */
-function buildState(redirectPath: string): string {
-  const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
-  const state = nonce;
-  sessionStorage.setItem(`wx_state_${state}`, redirectPath || '/mobile/checkin');
-  sessionStorage.setItem(`wx_state_nonce`, nonce);   // 回调时校验
-  return state;
-}
+  private readonly CORP_ID = 'ww your_corpid';        // corpid 不属于高敏感信息，可放前端
+  private readonly AGENT_ID = '1000002';              // agentid 同样可公开
+  private readonly CALLBACK =
+    'https://attendance.yourcompany.com/mobile/oauth/callback';
 
-/** 发起免登：整页跳转到企业微信授权地址 */
-export function redirectToWecomAuth(redirectPath: string) {
-  if (!isInWecom()) {
-    // 非企微环境（如 PC 浏览器直接打开），走系统账号密码登录页
-    window.location.href = '/login?redirect=' + encodeURIComponent(redirectPath);
-    return;
+  hasToken(): boolean {
+    return !!localStorage.getItem('sys_token');
   }
-  const state = buildState(redirectPath);
-  const url =
-    'https://open.weixin.qq.com/connect/oauth2/authorize' +
-    `?appid=${encodeURIComponent(CORP_ID)}` +
-    `&redirect_uri=${encodeURIComponent(CALLBACK)}` +
-    '&response_type=code' +
-    '&scope=snsapi_base' +
-    `&agentid=${AGENT_ID}` +
-    `&state=${encodeURIComponent(state)}` +
-    '#wechat_redirect';
-  window.location.replace(url);
-}
 
-/** 路由守卫调用：确保已登录 */
-export async function ensureLogin(targetPath: string): Promise<boolean> {
-  const token = localStorage.getItem('sys_token');
-  if (token) return true;                 // 已有 token，放行（由请求拦截器处理过期）
-  redirectToWecomAuth(targetPath);        // 否则发起免登（会离开当前页）
-  return false;
+  /** 生成随机 state，同时把“登录后要去的页面”暂存 sessionStorage */
+  private buildState(redirectPath: string): string {
+    const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    sessionStorage.setItem(`wx_state_${nonce}`, redirectPath || '/mobile/checkin');
+    sessionStorage.setItem('wx_state_nonce', nonce);   // 回调时校验
+    return nonce;
+  }
+
+  /** 发起免登：整页跳转到企业微信授权地址 */
+  redirectToWecomAuth(redirectPath: string): void {
+    if (!this.env.isInWecom()) {
+      // 非企微环境（如 PC 浏览器直接打开），走系统账号密码登录页
+      window.location.href = '/login?redirect=' + encodeURIComponent(redirectPath);
+      return;
+    }
+    const state = this.buildState(redirectPath);
+    const url =
+      'https://open.weixin.qq.com/connect/oauth2/authorize' +
+      `?appid=${encodeURIComponent(this.CORP_ID)}` +
+      `&redirect_uri=${encodeURIComponent(this.CALLBACK)}` +
+      '&response_type=code' +
+      '&scope=snsapi_base' +
+      `&agentid=${this.AGENT_ID}` +
+      `&state=${encodeURIComponent(state)}` +
+      '#wechat_redirect';
+    window.location.replace(url);
+  }
 }
 ```
+
+路由守卫只需调用 `hasToken()` 判断、未登录则 `redirectToWecomAuth()`（见 3.3 的 `WecomAuthGuard`）。
 
 > corpid、agentid 是"公开标识"（授权链接本来就要在浏览器里明文出现），放前端无妨；真正的密钥只有 secret，它永远只在服务端。
 
@@ -413,57 +473,74 @@ export async function ensureLogin(targetPath: string): Promise<boolean> {
 
 回跳到 `/mobile/oauth/callback?code=xxx&state=yyy` 后，回调页做三件事：校验 state → 把 code 发给后端 → 拿到 JWT 后跳回原目标页。
 
-```vue
-<!-- src/views/mobile/OAuthCallback.vue -->
-<script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { loginByWecomCode } from '@/api/auth';
+```typescript
+// src/app/mobile/pages/oauth/oauth-callback.component.ts
+import { Component, inject, OnInit, signal } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
+import { AuthService } from '../../../core/services/auth.service';
 
-const route = useRoute();
-const router = useRouter();
-const errMsg = ref('正在登录...');
+@Component({
+  selector: 'app-oauth-callback',
+  standalone: true,
+  template: `<div class="oauth-loading">{{ errMsg() }}</div>`,
+})
+export default class OauthCallbackComponent implements OnInit {
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private auth = inject(AuthService);
 
-onMounted(async () => {
-  const code = route.query.code as string;
-  const state = route.query.state as string;
+  protected errMsg = signal('正在登录...');
 
-  if (!code) { errMsg.value = '授权失败：缺少 code'; return; }
+  async ngOnInit(): Promise<void> {
+    const code = this.route.snapshot.queryParamMap.get('code') ?? '';
+    const state = this.route.snapshot.queryParamMap.get('state') ?? '';
 
-  // 1. 校验 state，防 CSRF：必须是我们跳转前存过的 nonce
-  const savedNonce = sessionStorage.getItem('wx_state_nonce');
-  if (!state || state !== savedNonce) {
-    errMsg.value = '登录态校验失败，请重新进入应用';
-    return;
+    if (!code) { this.errMsg.set('授权失败：缺少 code'); return; }
+
+    // 1. 校验 state，防 CSRF：必须是我们跳转前存过的 nonce
+    const savedNonce = sessionStorage.getItem('wx_state_nonce');
+    if (!state || state !== savedNonce) {
+      this.errMsg.set('登录态校验失败，请重新进入应用');
+      return;
+    }
+    const redirectPath = sessionStorage.getItem(`wx_state_${state}`) || '/mobile/checkin';
+
+    try {
+      // 2. code 交给后端换取系统 JWT
+      const { token } = await firstValueFrom(this.auth.loginByWecomCode(code));
+      localStorage.setItem('sys_token', token);
+      sessionStorage.removeItem(`wx_state_${state}`);
+      sessionStorage.removeItem('wx_state_nonce');
+      // 3. 回到原本想去的页面（可能是某条审批待办详情）
+      this.router.navigateByUrl(redirectPath, { replaceUrl: true });
+    } catch (e: any) {
+      this.errMsg.set('自动登录失败：' + (e?.message || '请重试'));
+    }
   }
-  const redirectPath = sessionStorage.getItem(`wx_state_${state}`) || '/mobile/checkin';
-
-  try {
-    // 2. code 交给后端换取系统 JWT
-    const { token } = await loginByWecomCode(code);
-    localStorage.setItem('sys_token', token);
-    sessionStorage.removeItem(`wx_state_${state}`);
-    sessionStorage.removeItem('wx_state_nonce');
-    // 3. 回到原本想去的页面（可能是某条审批待办详情）
-    router.replace(redirectPath);
-  } catch (e: any) {
-    errMsg.value = '自动登录失败：' + (e?.message || '请重试');
-  }
-});
-</script>
-
-<template>
-  <div class="oauth-loading">{{ errMsg }}</div>
-</template>
+}
 ```
 
 ```typescript
-// src/api/auth.ts
-import { http } from './request';
+// src/app/core/services/auth.service.ts
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, map } from 'rxjs';
 
-export function loginByWecomCode(code: string) {
-  // 这是少数几个不需要 token 的接口
-  return http.post('/api/auth/wecom/login', { code }).then((r) => r.data.data);
+interface WecomLoginResp { token: string; userInfo: unknown; }
+
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private http = inject(HttpClient);
+
+  /** code 换 JWT：这是少数几个不需要 token 的接口（拦截器中放行） */
+  loginByWecomCode(code: string): Observable<WecomLoginResp> {
+    return this.http
+      .post<{ code: number; message: string; data: WecomLoginResp }>(
+        '/api/auth/wecom/login', { code })
+      // 拆开后端统一响应信封 { code, message, data }（错误码处理可放拦截器统一做）
+      .pipe(map((resp) => resp.data));
+  }
 }
 ```
 
@@ -652,55 +729,97 @@ CREATE UNIQUE INDEX uk_sys_user_wecom ON sys_user (wecom_user_id) WHERE wecom_us
 
 免登拿到 userid 后，后续请求和 PC 端完全一样，都走系统已有的 JWT/Session 认证。这样考勤、审批接口零改造。
 
-前端 axios 拦截器自动注入 token、401 时重新免登：
+前端用 Angular 的 `HttpInterceptor` 统一注入 token、401 时重新免登：
 
 ```typescript
-// src/api/request.ts
-import axios from 'axios';
-import { isInWecom } from '@/wecom/env';
+// src/app/core/interceptors/auth.interceptor.ts
+import { HttpInterceptorFn, HttpHandlerFn, HttpRequest, HttpErrorResponse }
+  from '@angular/common/http';
+import { inject } from '@angular/core';
+import { catchError, throwError } from 'rxjs';
+import { WecomEnvService } from '../../wecom/env.service';
 
-export const http = axios.create({ baseURL: '/', timeout: 15000 });
-
-http.interceptors.request.use((config) => {
+export const authInterceptor: HttpInterceptorFn = (
+  req: HttpRequest<unknown>, next: HttpHandlerFn,
+) => {
   const token = localStorage.getItem('sys_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+  let authed = req;
+  if (token) {
+    authed = req.clone({ setHeaders: { Authorization: `Bearer ${token}` } });
+  }
 
-http.interceptors.response.use(
-  (resp) => {
-    const body = resp.data;
-    if (body.code === 0) return resp;
-    return Promise.reject(new Error(body.message || '请求失败'));
-  },
-  (error) => {
-    if (error.response?.status === 401) {
-      // token 过期：企微内重新静默免登（无感），外部环境跳登录页
-      localStorage.removeItem('sys_token');
-      if (isInWecom()) {
-        location.reload();   // 路由守卫会自动再次发起 OAuth
-      } else {
-        location.href = '/login?redirect=' + encodeURIComponent(location.pathname);
+  return next(authed).pipe(
+    catchError((error: HttpErrorResponse) => {
+      if (error.status === 401) {
+        // token 过期：企微内重新静默免登（无感），外部环境跳登录页
+        localStorage.removeItem('sys_token');
+        const env = inject(WecomEnvService);
+        if (env.isInWecom()) {
+          location.reload();   // 路由守卫会自动再次发起 OAuth
+        } else {
+          location.href = '/login?redirect=' + encodeURIComponent(location.pathname);
+        }
       }
-    }
-    return Promise.reject(error);
-  },
-);
+      return throwError(() => error);
+    }),
+  );
+};
 ```
 
-后端沿用现有 Spring Security / 拦截器，只把企微登录端点和回调端点放行：
+在 `app.config.ts` 中注册（函数式拦截器，Angular 15+）：
+
+```typescript
+// src/app/app.config.ts
+import { ApplicationConfig } from '@angular/core';
+import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { APP_ROUTES } from './app.routes';
+import { authInterceptor } from './core/interceptors/auth.interceptor';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(APP_ROUTES, withComponentInputBinding()),
+    provideHttpClient(withInterceptors([authInterceptor])),
+  ],
+};
+```
+
+> 免登接口 `/api/auth/wecom/login` 本身不带 token，拦截器对"本地存储无 token"的情况会原样放行，无需特殊判断；只有 401 时才触发重新免登。
+
+后端沿用现有 Spring Security 配置（SecurityFilterChain Bean 形式），只把企微登录端点和回调端点放行：
 
 ```java
-@Override
-protected void configure(HttpSecurity http) throws Exception {
-    http.authorizeRequests()
-        .antMatchers("/api/auth/wecom/**",     // 企微免登
-                     "/api/wecom/callback/**"  // 企微回调
-        ).permitAll()
-        .anyRequest().authenticated()
-        .and().csrf().disable();   // 前后端分离 + JWT，关闭 CSRF
+/**
+ * Spring Security 安全配置
+ *
+ * @author cuckoom
+ */
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers(
+                        "/api/auth/wecom/**",      // 企微免登
+                        "/api/wecom/callback/**"   // 企微回调
+                ).permitAll()
+                .anyRequest().authenticated()
+            )
+            // 前后端分离 + JWT：无状态、关闭 CSRF，JWT 过滤器解析令牌
+            .csrf(AbstractHttpConfigurer::disable)
+            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .addFilterBefore(jwtAuthenticationFilter(),
+                    UsernamePasswordAuthenticationFilter.class);
+        return http.build();
+    }
+    // JwtAuthenticationFilter：解析 Authorization 头并写入 SecurityContext，沿用现有实现
 }
 ```
+
+> 若你的项目仍使用 Spring Security 5.x 的 `WebSecurityConfigurerAdapter`，等价写法是重写 `configure(HttpSecurity)`，对同样两个路径 `permitAll()` 并 `csrf().disable()`；免登签发的 JWT 由现有 JWT 过滤器统一校验，与账号密码登录完全共用。
 
 至此，"点开应用 → 自动登录 → 直接看到自己的考勤和待办"的链路完整打通，且**考勤与 Activiti 的所有既有接口、权限、数据一行未改**。
 ## 五、JS-SDK：在 H5 中使用定位、拍照、扫码
@@ -819,99 +938,159 @@ JS-SDK 最经典的坑：**Android 用当前页 URL 签名，iOS（WKWebView）�
 统一解法：**在入口页把第一次的 URL 记下来，之后所有签名都用它（iOS）；Android 始终用当前 URL。**
 
 ```typescript
-// src/wecom/jssdk.ts
+// src/app/wecom/jssdk.service.ts
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom, map } from 'rxjs';
 import wx from 'weixin-js-sdk';
-import { http } from '@/api/request';
-import { isIOS } from './env';
+import { WecomEnvService } from './env.service';
 
-/** 取参与签名的 URL：去掉 #hash 部分（企业微信签名规则 url 不含 hash） */
-function signableUrl(href: string): string {
-  const idx = href.indexOf('#');
-  return idx >= 0 ? href.slice(0, idx) : href;
+interface WxConfigSignature {
+  corpId: string; agentId: string; nonceStr: string;
+  timestamp: string; signature: string;
 }
 
-/** 记录入口页 URL（仅 iOS 需要，需在应用一启动、路由跳转之前调用一次） */
-function entryUrl(): string {
-  const key = 'wx_ios_entry_url';
-  if (isIOS()) {
-    let url = sessionStorage.getItem(key);
-    if (!url) {
-      url = signableUrl(location.href);
-      sessionStorage.setItem(key, url);
-    }
-    return url;
+@Injectable({ providedIn: 'root' })
+export class WecomJssdkService {
+  private http = inject(HttpClient);
+  private env = inject(WecomEnvService);
+  private configPromise: Promise<void> | null = null;
+
+  /** 取参与签名的 URL：去掉 #hash 部分（企业微信签名规则 url 不含 hash） */
+  private signableUrl(href: string): string {
+    const idx = href.indexOf('#');
+    return idx >= 0 ? href.slice(0, idx) : href;
   }
-  return signableUrl(location.href);   // Android 用当前页
-}
 
-let configPromise: Promise<void> | null = null;
+  /** 记录入口页 URL（仅 iOS 需要，需在应用一启动、路由跳转之前调用一次） */
+  private entryUrl(): string {
+    const key = 'wx_ios_entry_url';
+    if (this.env.isIOS()) {
+      let url = sessionStorage.getItem(key);
+      if (!url) {
+        url = this.signableUrl(location.href);
+        sessionStorage.setItem(key, url);
+      }
+      return url;
+    }
+    return this.signableUrl(location.href);   // Android 用当前页
+  }
 
-/** 保证 wx.config 完成（全局只需一次，SPA 内可复用） */
-export function ensureWxConfig(): Promise<void> {
-  if (configPromise) return configPromise;
+  /** 保证 wx.config 完成（全局只需一次，SPA 内可复用） */
+  ensureWxConfig(): Promise<void> {
+    if (this.configPromise) return this.configPromise;
 
-  configPromise = (async () => {
-    const url = entryUrl();
-    const { data } = await http.get('/api/wecom/jssdk/config', { params: { url } });
-    const cfg = data.data;
+    this.configPromise = (async () => {
+      const url = this.entryUrl();
+      const cfg = await firstValueFrom(
+        this.http.get<{ code: number; data: WxConfigSignature }>(
+          '/api/wecom/jssdk/config', { params: { url } },
+        ).pipe(map((r) => r.data)),
+      );
 
-    await new Promise<void>((resolve, reject) => {
-      wx.config({
-        beta: true,                 // 必须！企业微信专有接口需 beta:true
-        debug: false,
-        appId: cfg.corpId,
-        agentId: cfg.agentId,
-        timeStamp: cfg.timestamp,
-        nonceStr: cfg.nonceStr,
-        signature: cfg.signature,
-        jsApiList: ['getLocation', 'chooseImage', 'scanQRCode'],
+      await new Promise<void>((resolve, reject) => {
+        wx.config({
+          beta: true,                 // 必须！企业微信专有接口需 beta:true
+          debug: false,
+          appId: cfg.corpId,
+          agentId: cfg.agentId,
+          timeStamp: cfg.timestamp,
+          nonceStr: cfg.nonceStr,
+          signature: cfg.signature,
+          jsApiList: ['getLocation', 'chooseImage', 'scanQRCode'],
+        });
+        wx.ready(() => resolve());
+        wx.error((res: any) => reject(new Error('wx.config 失败: ' + res.errMsg)));
       });
-      wx.ready(() => resolve());
-      wx.error((res: any) => reject(new Error('wx.config 失败: ' + res.errMsg)));
-    });
-  })();
+    })();
 
-  return configPromise;
+    return this.configPromise;
+  }
 }
 ```
 
-在应用入口（路由守卫之前）尽早记录 iOS 入口 URL：
+在应用启动时（路由首次跳转之前）尽早记录 iOS 入口 URL，可用 `APP_INITIALIZER`：
 
 ```typescript
-// main.ts
-import { recordEntryIfNeeded } from '@/wecom/jssdk';
-if (isInWecom()) {
-  // 触发一次入口 URL 落库（封装在 entryUrl 中，这里直接调 ensureWxConfig 也可）
+// src/app/app.config.ts 中注册启动初始化
+import { APP_INITIALIZER } from '@angular/core';
+
+function recordWxEntryUrl() {
+  const jssdk = inject(WecomJssdkService);
+  const env = inject(WecomEnvService);
+  return () => {
+    // 调一次 ensureWxConfig 的入口记录逻辑（iOS 会在首次跳转前固化落地页 URL）
+    if (env.isInWecom()) {
+      // 预热 wx.config；不阻塞也可，真正调用定位/扫码时 service 内部仍会兜底
+      jssdk.ensureWxConfig().catch(() => void 0);
+    }
+  };
 }
+
+// providers 中加入：
+// { provide: APP_INITIALIZER, useFactory: recordWxEntryUrl, multi: true }
 ```
+
+> 关键点是 iOS 的入口 URL 必须在任何前端路由跳转发生之前读取 `location.href` 固化下来。放在 `APP_INITIALIZER`（Angular 路由启动前执行）最稳妥；若不预热签名，至少也要在该钩子里把入口 URL 写入 sessionStorage。
 
 > 路由模式建议：为减少 hash 与签名的心智负担，H5 移动端可用 **history 模式**；若用 hash 模式，务必按上面 `signableUrl` 在 `#` 处截断，保证前后端参与签名的 URL 完全一致，且都用 `encodeURIComponent` / 都不编码，保持一致。
 
 ### 5.4 地理定位打卡
 
 ```typescript
-// src/wecom/device.ts
+// src/app/wecom/device.service.ts
+import { Injectable, inject } from '@angular/core';
 import wx from 'weixin-js-sdk';
-import { ensureWxConfig } from './jssdk';
+import { WecomJssdkService } from './jssdk.service';
 
 export interface LngLat { longitude: number; latitude: number; accuracy: number; }
 
-/** JS-SDK 定位（gcj02 火星坐标，与国内地图一致） */
-export function getLocation(): Promise<LngLat> {
-  return ensureWxConfig().then(() => new Promise((resolve, reject) => {
-    wx.getLocation({
-      type: 'gcj02',
-      success: (res: any) => resolve({
-        longitude: res.longitude,
-        latitude: res.latitude,
-        accuracy: res.accuracy,
-      }),
-      fail: (err: any) => reject(new Error('定位失败，请检查定位权限：' + err.errMsg)),
-    });
-  }));
+@Injectable({ providedIn: 'root' })
+export class WecomDeviceService {
+  private jssdk = inject(WecomJssdkService);
+
+  /** JS-SDK 定位（gcj02 火星坐标，与国内地图一致） */
+  getLocation(): Promise<LngLat> {
+    return this.jssdk.ensureWxConfig().then(() => new Promise((resolve, reject) => {
+      wx.getLocation({
+        type: 'gcj02',
+        success: (res: any) => resolve({
+          longitude: res.longitude,
+          latitude: res.latitude,
+          accuracy: res.accuracy,
+        }),
+        fail: (err: any) => reject(new Error('定位失败，请检查定位权限：' + err.errMsg)),
+      });
+    }));
+  }
+
+  /** 调起相机拍照（仅相机，不可相册，防作弊），返回 localId */
+  takePhoto(): Promise<string> {
+    return this.jssdk.ensureWxConfig().then(() => new Promise((resolve, reject) => {
+      wx.chooseImage({
+        count: 1,
+        sourceType: ['camera'],
+        sizeType: ['compressed'],
+        success: (res: any) => resolve(res.localIds[0]),
+        fail: (err: any) => reject(new Error('拍照失败：' + err.errMsg)),
+      });
+    }));
+  }
+
+  /** 扫一扫（工位/会议室二维码打卡） */
+  scanQRCode(): Promise<string> {
+    return this.jssdk.ensureWxConfig().then(() => new Promise((resolve, reject) => {
+      wx.scanQRCode({
+        needResult: 1,              // 1=由前端拿结果自行处理
+        scanType: ['qrCode'],
+        success: (res: any) => resolve(res.resultStr),
+        fail: (err: any) => reject(new Error('扫码失败：' + err.errMsg)),
+      });
+    }));
+  }
 }
 
-/** Haversine 距离（米） */
+/** Haversine 距离（米），纯函数可放公共 utils */
 export function distanceMeters(a: LngLat, b: { lat: number; lng: number }): number {
   const R = 6371000;
   const rad = (d: number) => (d * Math.PI) / 180;
@@ -923,19 +1102,39 @@ export function distanceMeters(a: LngLat, b: { lat: number; lng: number }): numb
 }
 ```
 
+打卡组件调用（`checkin.component.ts`），提示用团队既有 UI 库（如 NG-ZORRO 的 `NzMessageService`）：
+
 ```typescript
-// CheckinView.vue 提交打卡
-async function onCheckin() {
-  const loc = await getLocation();
-  const dist = distanceMeters(loc, { lat: COMPANY.lat, lng: COMPANY.lng });
-  if (dist > 200) { Toast.fail(`不在打卡范围，距公司 ${Math.round(dist)} 米`); return; }
-  await checkinApi.submit({
-    latitude: loc.latitude,
-    longitude: loc.longitude,
-    accuracy: loc.accuracy,
-    distance: Math.round(dist),
-  });
-  Toast.success('打卡成功');
+// src/app/mobile/pages/checkin/checkin.component.ts（节选）
+import { Component, inject } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+import { NzMessageService } from 'ng-zorro-antd/message';
+import { WecomDeviceService, distanceMeters } from '../../../wecom/device.service';
+import { CheckinService } from '../../../core/services/checkin.service';
+
+@Component({ selector: 'app-checkin', standalone: true, template: '...' })
+export class CheckinComponent {
+  private device = inject(WecomDeviceService);
+  private checkinApi = inject(CheckinService);
+  private msg = inject(NzMessageService);
+
+  private readonly COMPANY = { lat: 30.2741, lng: 120.1551, radius: 200 };
+
+  async onCheckin(): Promise<void> {
+    const loc = await this.device.getLocation();
+    const dist = distanceMeters(loc, this.COMPANY);
+    if (dist > this.COMPANY.radius) {
+      this.msg.error(`不在打卡范围，距公司 ${Math.round(dist)} 米`);
+      return;
+    }
+    await firstValueFrom(this.checkinApi.submit({
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      accuracy: loc.accuracy,
+      distance: Math.round(dist),
+    }));
+    this.msg.success('打卡成功');
+  }
 }
 ```
 
@@ -943,41 +1142,10 @@ async function onCheckin() {
 
 ### 5.5 拍照打卡与扫码打卡
 
-```typescript
-/** 调起相机拍照（仅相机，不可相册，防作弊） */
-export function takePhoto(): Promise<string> {
-  return ensureWxConfig().then(() => new Promise((resolve, reject) => {
-    wx.chooseImage({
-      count: 1,
-      sourceType: ['camera'],
-      sizeType: ['compressed'],
-      success: (res: any) => resolve(res.localIds[0]),
-      fail: (err: any) => reject(new Error('拍照失败：' + err.errMsg)),
-    });
-  }));
-}
+拍照、扫码已在 5.4 的 `WecomDeviceService` 中封装（`takePhoto()` 返回 localId、`scanQRCode()` 返回二维码内容），组件里直接 await 调用即可。`takePhoto` 拿到的 localId 图片需要再上传：
 
-/** localId 图片需先转 base64 或用 wx.uploadImage 得到 mediaId 再上传业务服务器 */
-```
-
-```typescript
-/** 扫一扫（工位/会议室二维码打卡） */
-export function scanQRCode(): Promise<string> {
-  return ensureWxConfig().then(() => new Promise((resolve, reject) => {
-    wx.scanQRCode({
-      needResult: 1,              // 1=由前端拿结果自行处理
-      scanType: ['qrCode'],
-      success: (res: any) => resolve(res.resultStr),
-      fail: (err: any) => reject(new Error('扫码失败：' + err.errMsg)),
-    });
-  }));
-}
-```
-
-照片上传两条路径：
-
-1. `wx.uploadImage` 先把图片上传到企业微信得到 `serverId`，后端再调企微媒体接口 `media/get` 拉回内网——适合不想在 H5 里直传文件的场景。
-2. 直接用 FormData 把本地文件 POST 到现有文件服务（H5 可将 localId 绘制到 canvas 转 blob），复用系统已有的附件存储。
+- `wx.uploadImage` 先把图片上传到企业微信得到 `serverId`，后端再调企微媒体接口 `media/get` 拉回内网——适合不想在 H5 里直传文件的场景；
+- 或把 localId 绘制到 canvas 转成 Blob，用 Angular 的 `FormData` + `HttpClient` 直接 POST 到现有文件服务，复用系统既有的附件存储。
 
 两种方式后端都沿用既有的照片存储与水印（时间+位置+设备信息）逻辑。扫码打卡后端校验二维码 token 有效性、过期时间，并叠加定位双重校验，同样复用现有接口。
 ## 六、Activiti 复杂审批流在企微端的落地
@@ -1118,7 +1286,7 @@ public List<ApproverProgressVO> countersignProgress(String processInstanceId) {
 }
 ```
 
-前端 `ApprovalDetail.vue` 根据 `nodeType` 渲染：会签显示多头像进度条（已办/待办），或签显示"值班组成员均可审批，点击签收办理"。
+前端 `ApprovalDetailComponent` 根据 `nodeType` 渲染：会签显示多头像进度条（已办/待办），或签显示"值班组成员均可审批，点击签收办理"。
 
 ### 6.4 签收（或签）与审批操作
 
