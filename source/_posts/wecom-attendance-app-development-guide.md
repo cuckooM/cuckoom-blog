@@ -93,7 +93,9 @@ categories:
 └───────────────────┘
 ```
 
-关键设计原则：**企业微信 userid 只是系统用户表上的一个外部身份字段**，考勤、Activiti 的候选人/办理人仍然使用系统内部 userId（或与 userid 统一，见 4.5 节讨论），这样企业微信只是新增的一种登录方式，不会侵入已有的权限和工作流模型。
+关键设计原则：**企业微信 userid 只是系统用户表上的一个外部身份字段**，考勤、Activiti 的候选人/办理人仍然使用系统内部 userId（或与 userid 统一，见 4.6 节讨论），这样企业微信只是新增的一种登录方式，不会侵入已有的权限和工作流模型。
+
+> 上图把 H5 前端、企微适配逻辑与业务后端画在同一侧，是为了说明调用关系。如果你的考勤系统部署在内网隔离区、企业微信和外网手机无法直接访问，则需要在 DMZ 单独部署一个公网中转网关（企微适配逻辑放网关，业务仍留内网，两侧用 mTLS + 内部令牌受控互通），详见**第九章「网络隔离下的公网中转网关」**。
 
 ## 二、开发环境搭建
 
@@ -1767,9 +1769,393 @@ public class ContactSyncService {
 }
 ```
 
-## 九、避坑指南
+## 九、网络隔离下的公网中转网关
 
-### 9.1 OAuth 免登类
+前面的章节默认后端服务可以直接被企业微信云端和用户手机访问。但很多企业的考勤系统部署在**内网隔离区**：没有公网 IP、不允许入站访问，甚至服务器自身也不能直接出公网。企业微信服务器在公网，手机端在企业内网之外（外勤 4G/5G），二者都无法直接访问到这套系统。这时就需要在 DMZ（隔离区）单独部署一个**公网中转网关**：它一面被企业微信和手机访问得到，一面又能通过受控通道访问到内网考勤系统。
+
+### 9.1 网络现状与目标
+
+典型现状：
+
+- 内网考勤系统（SpringBoot + PostgreSQL + Redis + Activiti）只对办公网开放，地址如 `http://10.10.20.30:8080`
+- 内网边界防火墙默认拒绝所有公网入站
+- 手机连企业微信（尤其外勤）时流量走公网，无法路由到 `10.x` 内网地址
+- 企业微信的 OAuth 回调、JS-SDK 可信域名、事件回调都要求一个**公网可达且备案的 HTTPS 域名**
+
+目标：
+
+- 用户手机上的 H5 页面能正常加载、完成免登、调用考勤与审批接口
+- 企业微信云端能把 OAuth 授权结果、消息卡片事件回调送达
+- 内网系统**不直接暴露公网**，数据库、Activiti、业务逻辑继续安全地留在内网
+- 公网侧被攻破时，影响面被限制在网关，无法直接触及业务库和内网横向移动
+
+### 9.2 两种打通模式
+
+| 模式 | 连通方向 | 适用前提 | 特点 |
+|------|----------|----------|------|
+| 模式一：DMZ 网关 + 防火墙白名单反代 | DMZ 网关 → 内网（边界防火墙放通指定端口） | 防火墙可以配置"DMZ→内网"的受限访问策略 | 最常用、链路短、性能好、审计清晰，**本文主推** |
+| 模式二：内网主动拨出反向隧道 | 内网 → DMZ/公网主动建隧道（frp/WireGuard） | 内网完全不允许任何入站，只允许出站 | 无需在边界开入站策略，穿透能力强；运维与审计更复杂 |
+
+绝大多数企业选择模式一：在 DMZ 放一台网关服务器，边界防火墙只放通"网关 IP → 内网考勤服务 IP:端口"这一条白名单规则。若安全策略严格到 DMZ 也不能主动连内网，则用模式二由内网主动拨出（见 9.7）。
+
+### 9.3 推荐架构：网关作为"企业微信适配层"
+
+关键设计原则：**公网网关不只是一个 Nginx 转发器，而是一个面向企业微信的适配层（BFF）**。所有与企业微信云端的通信都收敛到网关，内网系统完全不感知企业微信协议。
+
+```
+ 企业微信云端                手机企业微信(公网/4G)
+ gettoken/getuserinfo/        │
+ message send/事件回调          │ 打开H5、调API
+        │                      │
+        ▼                      ▼
+┌─────────────────────────────────────────────┐
+│              DMZ 公网网关（唯一公网暴露面）       │
+│  Nginx(443, HTTPS/备案域名/静态H5/WAF)         │
+│  WeCom Gateway (SpringBoot，企微适配层)         │
+│   · OAuth code→userid（持有 secret）           │
+│   · jsapi_ticket / 签名                        │
+│   · 消息代发 message/send                       │
+│   · 事件回调验签/AES解密                        │
+│   · access_token 集中缓存(Redis 或 本地)        │
+│   · 不存业务库、不连业务 PostgreSQL             │
+└───────────────┬─────────────────────────────┘
+                │  受控内部通道（mTLS + 内网令牌）
+                │  防火墙白名单：仅 网关IP→内网 10.10.20.30:8080
+                ▼
+┌─────────────────────────────────────────────┐
+│            内网考勤系统（原有，不暴露公网）        │
+│  SpringBoot：考勤 / Activiti / 账号绑定 / JWT    │
+│  PostgreSQL · Redis · 组织架构                  │
+│  仅新增一组 /internal/** 内部信任接口            │
+└─────────────────────────────────────────────┘
+```
+
+职责切分（非常重要）：
+
+| 能力 | 放在公网网关 | 留在内网系统 |
+|------|:---:|:---:|
+| 持有 corpid/secret/EncodingAESKey | ✅ | ❌ |
+| 调企微云端（gettoken、getuserinfo、get_jsapi_ticket、message/send） | ✅ | ❌ |
+| OAuth 回调落地、回调消息验签解密 | ✅ | ❌ |
+| H5 静态资源托管（也可放 CDN/OSS） | ✅ | ❌ |
+| 账号绑定映射（wecom_user_id ↔ 内部账号） | ❌ | ✅ |
+| 签发/校验业务 JWT、考勤、Activiti、组织架构 | ❌ | ✅ |
+| PostgreSQL/Redis 业务数据 | ❌ | ✅ |
+| 普通业务 API（/api/…）透传 | 仅反代 | ✅ 处理 |
+
+这样网关即使被攻破，攻击者也拿不到业务库数据，且网关不含长期有效的内网凭据（内部令牌短时效、可吊销）。
+
+### 9.4 隔离网络下的免登链路（与第四章的差异）
+
+第四章假设前后端同源、后端能直接调企微。加入网关后，"code 换 userid"发生在网关，"userid 换内部账号、签 JWT"发生在内网，中间多一跳**内部信任调用**：
+
+```
+手机H5          DMZ网关                    内网考勤系统        企微云端
+ │                │                          │                │
+ │ 无token,跳OAuth│                          │                │
+ │◀───────────────│                          │                │
+ │ 静默授权回跳?code                           │                │
+ │───────────────▶│ gettoken/getuserinfo ────────────────────▶│
+ │                │◀──────────────────── userid ──────────────│
+ │                │ POST /internal/wecom/assert {userid}      │
+ │                │  (mTLS + X-Internal-Token 网关令牌)        │
+ │                │─────────────────────────▶│ 查绑定账号       │
+ │                │                          │ 签发内部JWT      │
+ │                │◀──────────────────── JWT ─────────────────│
+ │◀───────────────│ 内部JWT写入前端                            │
+ │ 后续 /api/** 带JWT                          │               │
+ │───────────────▶│ Nginx反代(透传JWT)────────▶│ 考勤/审批      │
+```
+
+要点：
+
+- **secret 只在网关**，内网系统不需要、也不应该配置企微密钥
+- 内网只新增一个内部信任接口 `/internal/wecom/assert`：入参是 userid，出参是系统自己的 JWT。它**不暴露公网**，只接受来自网关、且带内部令牌/mTLS 的调用
+- 业务接口 `/api/**` 网关只做反向代理并透传 JWT，鉴权仍在内网的 Spring Security 完成（见 4.7），网关不解析业务
+
+**网关侧：code 换 userid 后换内部 JWT**
+
+```java
+/**
+ * DMZ 网关：企微 OAuth 适配
+ *
+ * @author cuckoom
+ */
+@RestController
+@RequestMapping("/wecom")
+@Slf4j
+public class GatewayOAuthController {
+
+    @Resource
+    private WecomTokenManager tokenManager;      // gettoken + Redis 缓存，见 8.1
+    @Resource
+    private InternalAttendanceClient internalClient;  // 调内网的内部信任接口
+
+    /** OAuth 回调：code -> 企微 userid -> 内网 JWT */
+    @GetMapping("/oauth/callback")
+    public void callback(@RequestParam("code") String code,
+                         @RequestParam("state") String state,
+                         HttpServletResponse resp) throws IOException {
+        String userid = exchangeUserid(code);               // 网关调企微云端
+        String jwt = internalClient.assertWecomUser(userid); // 网关调内网换JWT
+
+        String redirect = stateService.consumeTarget(state); // state 还原原目标页并校验CSRF
+        // 通过一次性中转页把 JWT 交给前端（写 localStorage 后跳目标页）
+        resp.sendRedirect("/oauth-bridge.html#token="
+                + URLEncoder.encode(jwt, StandardCharsets.UTF_8)
+                + "&redirect=" + URLEncoder.encode(redirect, StandardCharsets.UTF_8));
+    }
+
+    private String exchangeUserid(String code) {
+        String token = tokenManager.getAccessToken();
+        String url = "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo"
+                + "?access_token=" + token + "&code=" + code;
+        JSONObject json = restTemplate.getForObject(url, JSONObject.class);
+        if (json == null || json.getIntValue("errcode") != 0
+                || StrUtil.isBlank(json.getString("userid"))) {
+            throw new BusinessException(ErrorCode.WECOM_USER_NOT_IN_SCOPE, "不在应用授权范围");
+        }
+        return json.getString("userid");
+    }
+}
+```
+
+> 不要把内部 JWT 长期拼在 URL 里（会进网关/Nginx 日志和浏览器历史）。上面用一次性 `/oauth-bridge.html`：页面脚本读取 hash 中的 token（hash 不会发到服务器、不留服务器日志），写入 localStorage 后立即 `history.replaceState` 清掉，再跳到目标页。state 仍按 4.3 做 CSRF 校验和原路径还原。
+
+**内网侧：只接受网关调用的内部信任接口**
+
+```java
+/**
+ * 内网：企业微信身份断言接口（仅网关可调用，不暴露公网）
+ *
+ * @author cuckoom
+ */
+@RestController
+@RequestMapping("/internal/wecom")
+@Slf4j
+public class InternalWecomAssertController {
+
+    @Resource
+    private SysUserService userService;
+    @Resource
+    private JwtTokenProvider jwtTokenProvider;
+
+    @PostMapping("/assert")
+    public Result<AssertVO> assertUser(
+            @RequestHeader(value = "X-Internal-Token", required = false) String internalToken,
+            @RequestBody @Valid AssertDTO dto) {
+
+        // 1. 校验来自网关的内部令牌（或在 mTLS 层校验客户端证书，二选一或叠加）
+        if (!internalTokenVerifier.verify(internalToken)) {
+            log.warn("内部断言接口非法调用，userid={}", dto.getUserid());
+            throw new BusinessException(ErrorCode.FORBIDDEN, "内部接口拒绝访问");
+        }
+
+        // 2. 复用第 4.6 节的账号绑定逻辑（绝不重复建号）
+        SysUser user = userService.getOrBindByWecomUserId(dto.getUserid());
+
+        // 3. 签发系统原有 JWT（与账号密码登录完全一致）
+        String jwt = jwtTokenProvider.generateToken(user.getId(), user.getUsername());
+        return Result.success(new AssertVO(jwt, UserInfoVO.of(user)));
+    }
+}
+```
+
+`/internal/**` 在 Spring Security 中单独配置：只允许来自网关 IP（或带 mTLS 客户端证书），并且**不允许出现在公网 Nginx 的反代 location 中**，从网络和应用两层保证它不会被外部直接调用。
+
+### 9.5 网关与内网之间的内部信任（安全核心）
+
+DMZ 到内网这一跳是整个方案安全级别最高的地方，必须做到"通道加密 + 身份认证 + 最小授权"：
+
+- **网络层白名单**：边界防火墙只放通 `网关IP:随机源端口 → 内网考勤IP:8080/tcp`，内网其它端口、其它主机一律不可达。网关到数据库（5432）、Redis（6379）**绝不开通**
+- **传输加密 mTLS**：网关与内网之间走 HTTPS 双向证书认证，内网只信任网关的客户端证书。即使同网段被嗅探也无法伪造或重放
+- **应用层内部令牌**：在 mTLS 之外再加一个短时效的 `X-Internal-Token`（网关注入、内网校验），双保险；令牌放环境变量，定期轮换
+- **接口最小化**：内网只暴露 `/internal/wecom/assert`（换 JWT）、`/internal/message/send`（代发待办）、`/internal/callback/event`（投递回调事件）等极少数接口，且入参严格白名单校验
+- **防重放**：内部请求加时间戳 + nonce，内网侧校验时间窗口（如 ±5 分钟）和 nonce 唯一性
+- **网关不落业务数据**：网关不连业务 PostgreSQL，access_token 等用网关自己的 Redis 或本地缓存；日志脱敏，不记录 JWT 明文
+
+内部令牌校验示例：
+
+```java
+@Component
+public class InternalTokenVerifier {
+
+    @Value("${internal.gateway.token}")
+    private String expectedToken;
+
+    public boolean verify(String token) {
+        // 常量时间比较，防止计时侧信道
+        return StrUtil.isNotBlank(token)
+                && MessageDigest.isEqual(
+                        token.getBytes(StandardCharsets.UTF_8),
+                        expectedToken.getBytes(StandardCharsets.UTF_8));
+    }
+}
+```
+
+### 9.6 事件回调与消息推送的跨区处理
+
+隔离网络下，企业微信的事件回调（卡片按钮、通讯录变更）只能先打到公网网关，再由网关投递到内网；内网产生的审批待办通知则反向通过网关代发。
+
+**入站：企微事件回调 → 网关验签解密 → 投递内网**
+
+```java
+/**
+ * 网关侧：接收企微回调，验签+AES解密后，转发内网处理
+ *
+ * @author cuckoom
+ */
+@RestController
+@RequestMapping("/wecom/callback")
+@Slf4j
+public class GatewayCallbackController {
+
+    @Resource
+    private WXBizMsgCrypt crypt;                 // 官方加解密（secret 留在网关）
+    @Resource
+    private InternalAttendanceClient internalClient;
+
+    @PostMapping(value = "/message", produces = "application/xml")
+    public String receive(@RequestParam("msg_signature") String sig,
+                          @RequestParam String timestamp,
+                          @RequestParam String nonce,
+                          @RequestBody String encryptedBody) {
+        try {
+            // 1. 网关完成验签 + AES 解密（内网无需知道 EncodingAESKey）
+            String xml = crypt.DecryptMsg(sig, timestamp, nonce, encryptedBody);
+            // 2. 验签通过的明文事件，经内部信任通道投递内网（异步、带内部令牌/mTLS）
+            internalClient.forwardEvent(xml);
+        } catch (Exception e) {
+            log.error("企微回调处理失败", e);
+        }
+        return "success";   // 网关立即回 success，避免企微重推；内网处理幂等
+    }
+}
+```
+
+内网收到的已经是验过签的明文事件，直接复用第七章的 `WecomCallbackService` 分发逻辑（卡片按钮 → `approvalService.approve()`，通讯录变更 → 增量同步）。注意内网处理必须幂等，因为网关转发可能重试。
+
+**出站：内网待办 → 网关代发企微消息**
+
+内网不持有 secret、也可能不能直接访问公网，因此 Activiti 的待办推送监听器（见 6.6）不再直接调企微，而是把"要发给谁、什么卡片"提交给网关，由网关代发：
+
+```java
+/**
+ * 内网侧：把待办通知交给公网网关卡发（内网不持企微 secret）
+ *
+ * @author cuckoom
+ */
+@Service
+@Slf4j
+public class GatewayMessageRelay {
+
+    @Resource
+    private InternalGatewayClient gatewayClient;
+
+    public void sendApprovalTodoCard(String wecomUserId, TodoPushDTO todo) {
+        // 经 mTLS/内部令牌调用网关；网关再调 message/send
+        gatewayClient.enqueueMessage(MessageEnvelope.builder()
+                .toUser(wecomUserId)
+                .msgType("textcard")
+                .title("待审批：" + todo.getNodeName())
+                .description(todo.getSummary())
+                .btnText("立即审批")
+                // 卡片链接指向公网 H5 域名，点击后走免登直达该审批
+                .url("https://attendance.yourcompany.com/mobile/approval/" + todo.getTaskId())
+                .build());
+    }
+}
+```
+
+```java
+/**
+ * 网关侧：代发服务（唯一调用 message/send 的地方）
+ *
+ * @author cuckoom
+ */
+@Service
+public class GatewaySendService {
+
+    @Resource
+    private WecomTokenManager tokenManager;
+
+    public void send(MessageEnvelope env) {
+        // 校验内网来源（mTLS/内部令牌在拦截器完成），再组装企微报文发送
+        // 记录 invaliduser，便于排查"某人收不到待办"
+        ...
+    }
+}
+```
+
+这样形成清晰的单向职责：企微相关密钥和云端调用全部收敛在网关；内网只产生和处理业务，通过一个窄接口收发消息。
+
+### 9.7 备选模式：内网主动拨出反向隧道
+
+如果安全策略不允许 DMZ 主动连接内网（任何 DMZ→内网入站都被禁止），可改为**内网主动向 DMZ/公网网关建立长连接隧道**，由内网拨出，复用已放通的出站策略：
+
+- **WireGuard / IPsec 隧道**：在网关与内网一台隧道机之间建立加密点对点网络，内网主动拨号上线；对网关而言内网服务变成隧道对端地址，仍用 9.3 的应用层鉴权。运维成熟、性能好，优先考虑
+- **frp / rathil 等反向代理**：内网客户端 `frpc` 主动连到公网 `frps`，把内网 `8080` 映射成网关上的一个本地端口。搭建快，但要严格限制暴露的端口和协议，并叠加 mTLS/令牌，避免隧道变成"公网直通内网"的后门
+- **消息队列/轮询中转**：安全要求极高时，内网只主动消费网关侧队列（如拉取待发回调、回推代发结果），全程内网出站，无任何反向入站。时延略高，但攻击面最小
+
+选型原则：能用"DMZ + 防火墙白名单"就不用隧道；必须隧道时优先 WireGuard 这类网络层方案并叠加应用层鉴权；不要用裸 frp 直接把内网管理端口映射到公网。
+
+### 9.8 Nginx 网关反代配置要点
+
+网关的 Nginx 负责 TLS 终结、H5 静态资源、以及把 `/api/**` 反代到内网（经隧道对端地址或防火墙可达地址）。注意 `/internal/**` 绝不能在这里暴露：
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name attendance.yourcompany.com;
+
+    ssl_certificate     /etc/nginx/ssl/attendance.crt;
+    ssl_certificate_key /etc/nginx/ssl/attendance.key;
+
+    # H5 静态资源（Angular 打包产物，history 模式兜底）
+    root /data/www/mobile;
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 业务 API：反代到内网考勤系统，透传 Authorization(JWT)
+    location /api/ {
+        proxy_pass https://10.10.20.30:8080;   # 或 WireGuard 隧道对端地址
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_ssl_verify       on;          # 到内网也走 mTLS
+        proxy_ssl_trusted_certificate /etc/nginx/mtls/ca.crt;
+        proxy_ssl_certificate     /etc/nginx/mtls/gateway.crt;
+        proxy_ssl_certificate_key /etc/nginx/mtls/gateway.key;
+    }
+
+    # 注意：这里【不要】配置 /internal/ 的反代，内部接口只走网关后端的受信通道
+
+    # 网关自身的企微回调/免登由网关 SpringBoot 应用处理（如监听 127.0.0.1:8090）
+    location ~ ^/(wecom|oauth-bridge) {
+        proxy_pass http://127.0.0.1:8090;
+    }
+}
+```
+
+> 前端打包时把 API 基址指向公网网关同源路径（如 `/api`），由 Nginx 转发内网；JS-SDK 签名、OAuth 回调域名都用网关的公网备案域名。内网系统无需任何公网域名和证书。
+
+### 9.9 公网网关自身的安全加固
+
+DMZ 主机是暴露面，要按最小化原则加固：
+
+- 只开 443（和必要的 SSH 限源 IP + 密钥登录），关闭其余端口；前置云 WAF / 安全组
+- 网关进程以非 root、最小权限运行；容器部署时只读根文件系统、drop capabilities
+- 网关不持久化业务数据、不连业务库；日志集中转发，磁盘不长期留存敏感信息
+- secret、内部令牌、mTLS 私钥全部走环境变量/KMS，不进镜像和 Git（见 8.2）
+- 网关到企微的出口 IP 加入企微"企业可信 IP"白名单（见 10.4 频率与白名单一节）
+- 限流、防重放、请求体大小限制在网关层统一做；异常调用触发告警
+- 网关与内网之间的内部接口做调用审计（谁、什么时间、调了哪个内部接口、userid 是什么）
+
+## 十、避坑指南
+
+### 10.1 OAuth 免登类
 
 - **应用主页/回调域名必须在"可信域名"下**，否则授权页报 `redirect_uri 参数错误`。
 - **授权链接必须带 `agentid`**，否则部分企业微信版本下 `getuserinfo` 拿不到应用身份。
@@ -1778,7 +2164,7 @@ public class ContactSyncService {
 - **PC 浏览器打开链接不会静默授权**：`snsapi_base` 仅在企微客户端内无感。前端务必先判 UA，非企微环境走系统账号密码登录。
 - **code 只能用一次、5 分钟过期**：回跳页刷新会导致 code 复用报错。登录成功后应用 `router.replace` 清掉 URL 上的 code，避免刷新重放。
 
-### 9.2 JS-SDK 签名类
+### 10.2 JS-SDK 签名类
 
 - **iOS 用入口页 URL、Android 用当前页 URL 签名**（见 5.3），SPA 下这是 `invalid signature` 的头号原因。入口 URL 要在第一次路由跳转前记录。
 - **参与签名的 URL 与 `location.href` 必须逐字符一致**：协议、域名、端口、query 都要包含；hash 部分按规则统一处理（建议 history 模式避免）。
@@ -1786,7 +2172,7 @@ public class ContactSyncService {
 - 调企业微信专有接口要 `wx.config` 里设 `beta: true`，并再做一次 `wx.agentConfig`。
 - 本地真机调试必须用内网穿透的 https 域名，hosts 方案对手机无效。
 
-### 9.3 Activiti 与账号映射类
+### 10.3 Activiti 与账号映射类
 
 - **办理人标识务必统一为内部 username**，不要把 wecom_user_id 直接写进 BPMN assignee，否则换身份源（以后接钉钉/飞书）流程定义全要改。
 - **不要按 wecom_user_id 新建重复账号**：已有系统第一原则是绑定映射（4.6），否则考勤和历史待办会分裂成两个人。
@@ -1794,7 +2180,7 @@ public class ContactSyncService {
 - **会签驳回要提前结束剩余实例**：用 completionCondition 含 REJECT 判断 + 监听里 delete 剩余 task，否则驳回后其他人还会收到待办。
 - **联动考勤写在流程结束监听器里**，而不是某个审批按钮接口里，保证 PC、H5、卡片回调任意入口都生效，且审批未真正通过不会误改考勤。
 
-### 9.4 企微 API 频率与其他
+### 10.4 企微 API 频率与其他
 
 | API | 限制（参考，以官方文档为准） |
 |-----|------|
@@ -1811,7 +2197,17 @@ public class ContactSyncService {
 - **textcard 的 url 建议直接落到详情页**，配合免登 + state 回跳，实现"点通知直达审批"。
 - **secret 泄漏** 立即在后台重置并重启服务；代码评审时把"前端/日志出现 secret"列为红线。
 
-## 十、上线检查清单
+### 10.5 网络隔离与中转网关类
+
+- **内网系统绝不直接暴露公网**：只在 DMZ 放网关，边界防火墙仅放通"网关 IP → 内网考勤服务 IP:端口"一条白名单，网关到数据库/Redis 端口一律不开。
+- **secret 与业务库分侧放置**：企微 secret、EncodingAESKey 只放网关；账号绑定、JWT、业务数据只在内网。两侧都不要既持密钥又连业务库。
+- **内部接口 `/internal/**` 必须双重保护**：mTLS 客户端证书 + 内部令牌（短时效、可轮换、常量时间比较），且不能出现在公网 Nginx 的反代 location 中，同时加时间戳/nonce 防重放。
+- **不要把内部 JWT 长期放在 URL query**：会进 Nginx/网关日志和浏览器历史。用一次性中转页读 hash（`#` 部分不落服务器日志）写 localStorage 后立即清除。
+- **回调网关先回 success，内网异步幂等处理**：网关验签解密后转发内网，自身秒回；内网按事件 id 幂等，容忍网关重试。
+- **反向隧道不要裸暴露管理端口**：只能用内网主动拨出的 WireGuard/mTLS 隧道承载窄接口；禁止用裸 frp 把内网 8080/管理后台直接映射到公网。
+- **证书与可达性分别验证**：企微可信域名/HTTPS 证书配在网关公网域名；内网用自签或内部 CA 证书做 mTLS 即可，无需公网证书。真机外勤网络（4G/5G）下务必回归一遍免登与回调。
+
+## 十一、上线检查清单
 
 **企微后台**
 
@@ -1845,6 +2241,17 @@ public class ContactSyncService {
 - [ ] HTTPS 证书有效期监控、接口限流与关键操作审计日志
 - [ ] 通讯录增量回调 + 每日全量兜底任务已启用
 
+**网络隔离 / 公网中转网关（第九章，隔离网络必查）**
+
+- [ ] DMZ 网关是唯一公网暴露面，内网考勤系统无任何公网入站规则
+- [ ] 边界防火墙仅放通"网关 IP → 内网考勤 IP:8080"，到 PG/Redis 端口未开通
+- [ ] 企微 secret / EncodingAESKey 只在网关，内网不持有；网关不连业务库
+- [ ] `/internal/**` 走 mTLS + 内部令牌 + 时间戳/nonce 防重放，且未在公网 Nginx 反代
+- [ ] 免登跨区链路真机验证：网关换 userid → 内网 assert 换 JWT → 业务接口透传鉴权
+- [ ] 回调：网关验签解密秒回 success，内网异步幂等；待办经网关卡发送达
+- [ ] 外勤 4G/5G 真机回归：H5 加载、免登、定位打卡、审批待办与卡片回调
+- [ ] 若用反向隧道：内网主动拨出、WireGuard/mTLS、仅暴露窄接口，无裸 frp 管理端口
+
 ## 总结
 
 在"已有考勤系统 + Activiti 复杂审批"的前提下做企业微信集成，正确的思路不是重写一套，而是把企微当作**入口、身份提供方和消息通道**：
@@ -1855,6 +2262,7 @@ public class ContactSyncService {
 - **审批复用**：会签（多实例 + 完成条件）、或签（candidateUsers + claim）、组织架构审批（UEL 表达式动态解析负责人）全部沿用已有 BPMN；H5 只新增待办列表/详情/办理入口，底层都走同一个 `taskService.complete()`。
 - **联动与触达**：考勤联动放在流程结束监听器中保证各入口一致；新待办通过 textcard 推送，链接直达审批详情并复用免登；卡片内一键审批走回调，操作必须幂等。
 - **重点避坑**：可信域名与企业可信 IP、iOS/Android 签名 URL 差异、code 一次性与 state 防 CSRF、绝不重复建号、或签签收、回调秒回 success、票据集中缓存。
+- **网络隔离落地**：考勤系统在内网无法被企微访问时，在 DMZ 部署公网中转网关作为唯一暴露面——企微密钥与云端调用（gettoken/getuserinfo/签名/消息代发/回调验签）收敛到网关，账号绑定、JWT、Activiti 与业务数据全部留在内网，两侧用 mTLS + 内部令牌的窄接口（`/internal/**`）受控互通；连 DMZ→内网入站都不允许时，退而用内网主动拨出的 WireGuard/mTLS 反向隧道。这样既打通了企微入口，又不把内网系统直接暴露到公网。
 
 官方文档：[企业微信开发者中心](https://developer.work.weixin.qq.com/document/)
 
