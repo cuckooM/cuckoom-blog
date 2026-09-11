@@ -1,2237 +1,405 @@
 ---
-title: "Complete Guide to WeCom App Development: Building an Attendance System"
+title: "Complete Guide to WeCom App Development: Integrating an Existing Attendance + Activiti Approval System via H5"
 date: 2026-07-09 21:00:00
 tags:
   - WeCom
-  - Mini Program Development
+  - H5 Development
   - Attendance System
+  - Activiti
+  - Workflow
+  - Single Sign-On
   - API Integration
-  - Mobile Development
 categories:
   - Technical Practice
 lang: en
 ---
 
-WeCom (Enterprise WeChat), as an enterprise-level communication and collaboration platform, provides rich open APIs supporting enterprise self-built applications, third-party applications, and proxy-developed applications. As the capabilities of WeCom Mini Programs continue to evolve, more and more enterprises choose to develop internal applications in mini program mode to achieve a more native-like experience and stronger device capability access.
+For many teams, WeCom development is not about building a new system from scratch, but about a far more common and realistic scenario: **the business system already exists and has been running for years** — the attendance module has long been live, and the approval workflow is built on Activiti with complex flows such as countersign (all must approve), or-sign (any one approves), and organization-chart-based multi-level approval, with the approval process also querying and interacting with attendance data. The current requirement is: bring this system into WeCom so that employees can open it from the WeCom Workbench and use it immediately, **without entering a username or password — they land directly on their own attendance data and to-do tasks**.
 
-This article uses an attendance system as a case study, **with WeCom Mini Program mode as the main thread**, to systematically explain the entire application development process. It covers mini program registration and creation, project structure, identity authentication, geolocation check-in, photo check-in, QR code scan check-in, backend API integration, message push, security design, and other key aspects. It also compares and explains the differences with the H5 application mode to help R&D teams with technology selection and implementation.
+Under these premises, the H5 application model is often a better fit than a Mini Program: the existing system is already an Angular + SpringBoot web architecture, so H5 can directly reuse the front-end pages and back-end APIs, and together with WeCom OAuth2 web authorization (`snsapi_base`) it achieves completely silent automatic login (SSO). Deployment takes effect immediately with no review or release process, and iteration cost is minimal when approval forms change frequently.
+
+Using "**an existing attendance management system + complex Activiti approval workflows**" as the background and **the H5 model as the main thread**, this article systematically explains how to complete the WeCom-side integration without rewriting the business system. It focuses on the complete OAuth2 silent login chain, the binding/mapping between WeCom accounts and system accounts, invoking device capabilities through the JS-SDK, and the WeCom-side implementation of Activiti countersign/or-sign/organization-chart approval interacting with attendance (to-do push, one-tap approval on cards, organization-chart synchronization).
 
 <!-- more -->
 
-## I. Overview of WeCom App Development
+## 1. Scenario Analysis and Model Selection
 
-### 1.1 Platform Positioning
+### 1.1 Assumptions About the Existing System
 
-The WeCom Open Platform provides developers with a complete API system covering address book management, message push, OAuth authentication, JS-SDK, mini programs, efficiency tools (check-in, approval, reporting), and other capabilities. Developers can build enterprise internal applications based on these APIs, or develop third-party applications serving multiple enterprises.
+This article assumes the business system currently looks as follows (this is also the typical shape of internal systems in most mid-sized and large enterprises):
 
-### 1.2 Application Types
+- **Attendance management**: complete check-in, check-in records, make-up check-in applications, and attendance statistics features already exist, with the back end exposing REST APIs
+- **Approval workflow engine**: built on Activiti (6.x/7.x), with process definitions including:
+  - **Countersign (all must approve)**: a node requires every one of multiple people to approve (e.g., a make-up check-in needs both the direct manager and HR to agree)
+  - **Or-sign (any one approves)**: at a node, any one of multiple people can approve (e.g., a department duty-approval group)
+  - **Organization-chart-based approval**: approvers are determined dynamically according to the applicant's department (department head → division leader → HRBP)
+  - **Attendance data interaction**: the approval process reads/writes attendance data (e.g., once a make-up check-in is approved, the check-in record is automatically corrected; once annual leave is approved, the leave balance is deducted)
+- **Account system**: the system has its own user table and role/permission system (e.g., Spring Security + JWT/Session)
+- **Front end**: an existing web client, an Angular single-page application (TypeScript)
 
-| Type | Applicable Scenario | Characteristics |
-|------|----------|------|
-| Self-built App | Internal enterprise use | Visible only to the enterprise, flexible configuration, API permissions assigned by administrators |
-| Third-party App | Serving multiple enterprises | Requires WeCom review, supports multi-enterprise authorized installation |
-| Proxy-developed App | Developed by service provider on behalf of enterprise | Enterprise authorizes service provider, who develops and maintains on their behalf |
+There are only two core problems to solve:
 
-This article focuses on **self-built applications**, which is the most common development scenario.
+1. **Identity**: who is the person entering from WeCom? How do they map to a system account for automatic login?
+2. **Entry and reach**: how do users enter the application from the WeCom Workbench? How are approval to-do tasks actively pushed to employees' WeCom?
 
-### 1.3 Development Mode: Mini Program vs H5
+The business logic (check-in rules, approval flow transitions) **does not need to be moved into WeCom at all**. WeCom only plays three roles: "entry point + identity provider (IdP) + message channel".
 
-WeCom application development has two main modes: **Mini Program mode** and **H5 Application mode**. Each has its pros and cons, and both should be considered comprehensively when selecting.
+### 1.2 Why H5 Is the First Choice in This Scenario
 
-| Comparison Dimension | WeCom Mini Program | H5 Application |
-|----------|--------------|---------|
-| Runtime Environment | WeCom Mini Program runtime | WeCom built-in browser WebView |
-| Development Framework | WXML/WXSS/JS (similar to WeChat Mini Program) | Any frontend framework (Vue/React, etc.) |
-| Performance Experience | Near-native, fast startup, smooth page transitions | Depends on WebView, slower first-screen loading |
-| Offline Capability | Supports local cache, usable on weak networks | No offline support, network-dependent |
-| Device Capabilities | Native API direct calls (`wx.getLocation`, etc.) | Requires indirect calls via JS-SDK, needs signature verification |
-| Identity Authentication | `wx.qyLogin` to get code, silent and seamless | OAuth2 web authorization redirect, user-aware |
-| Publishing Process | Requires review submission, strict version management | Takes effect upon deployment, no review needed |
-| Update Flexibility | Requires re-publishing a version to update | Hot update anytime, high flexibility |
-| Cross-platform Consistency | WeCom guarantees multi-platform consistency | Need to adapt to iOS/Android WebView differences yourself |
-| Applicable Scenarios | High-frequency use, high performance requirements, device capability access needed | Rapid development, frequent iteration, content-oriented applications |
+| Comparison Dimension | H5 Application (the approach in this article) | WeCom Mini Program |
+|----------|--------------------|----------------|
+| Reusing the existing web front end | Directly reuses existing Angular pages | All pages must be rewritten in WXML/WXSS |
+| Reusing existing back-end APIs | Directly reused; only one OAuth login endpoint is added | Reused as well, but the entire front end is rebuilt |
+| Automatic login | OAuth2 `snsapi_base` silent authorization, completely transparent | `wx.qyLogin` silent login, also transparent |
+| Release and iteration | Takes effect on deployment; approval forms can be changed anytime | Requires submission for review and version release; emergency fixes are slow |
+| Complex forms/process pages | Web technologies are flexible and suit form-heavy pages like approvals | Form-engine-style pages are expensive to develop |
+| Device capabilities | JS-SDK: geolocation/camera/scan (requires signature) | Native APIs called directly, slightly better experience |
+| Approval-style business: "low frequency, form-heavy, high iteration" | Excellent fit | Overweight |
 
-**Selection Recommendations:**
+**Conclusion**: check-in itself is high-frequency and device-capability-heavy, where Mini Programs do offer a better experience; but under the premise of "**integrating an existing system, with complex and frequently changing approval flows, where the primary goals are low-cost launch and automatic login**", H5's overall benefits far outweigh the small gap in experience. H5 can also invoke geolocation, camera, and scanning through the JS-SDK, fully covering attendance scenarios. Later in this article we provide a complete JS-SDK signature scheme and handling of iOS/Android pitfalls.
 
-- **Attendance system recommends Mini Program mode**: Attendance is a high-frequency operation with requirements for location accuracy, photo speed, and startup speed. Mini program's native API calls are more direct and provide a better experience
-- **Approval system can use H5 mode**: Approval workflow forms are complex and change frequently. H5 offers higher flexibility
-- **Hybrid mode**: The same self-built application can configure both mini program entry and H5 entry, guiding users by scenario
+> If check-in experience requirements increase later, a hybrid model is also possible: configure both an H5 home page (approvals, records, statistics) and a Mini Program (check-in) in the same self-built application; message cards jump to each according to business type, and the back-end account system is fully shared.
 
-This article uses **Mini Program mode as the main thread** to explain attendance system development, with comparisons to H5 mode differences at key points.
+### 1.3 Overall Architecture
 
-## II. Development Environment Setup
+```
+┌───────────────────────────────┐
+│          WeCom Client          │
+│  Workbench / Message Card / Scan     │
+└───────────────┬───────────────┘
+                │ Open H5 (built-in WebView)
+                ▼
+┌───────────────────────────────┐
+│   H5 Front End (reusing existing web project)  │
+│  Angular SPA + wx JS-SDK     │
+│  Router guard: no token → redirect to OAuth  │
+└───────────────┬───────────────┘
+                │ HTTPS (JWT)
+                ▼
+┌───────────────────────────────────────────────────────┐
+│                    Existing Business Back End (SpringBoot)            │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐ │
+│  │ WecomOAuth   │  │ Attendance module      │  │ Activiti approval  │ │
+│  │ Silent login/account binding │  │ (existing, reused)  │  │ (existing, reused)   │ │
+│  └──────┬───────┘  └──────────────┘  └───────┬───────┘ │
+│         │              Account mapping table user_id ↔ wecom_userid │
+└─────────┼────────────────────────────────────┼─────────┘
+          ▼                                    ▼
+┌───────────────────┐              ┌──────────────────────┐
+│ WeCom server-side API  │              │ PostgreSQL / Redis   │
+│ gettoken           │              │ Business tables + act_* workflow tables │
+│ auth/getuserinfo   │              └──────────────────────┘
+│ jsapi_ticket       │
+│ message/send push   │◀──── When an approval to-do is created, the back end actively pushes a card
+└───────────────────┘
+```
 
-### 2.1 Registering WeCom and Creating an Application
+Key design principle: **the WeCom userid is merely an external identity field on the system's user table**. Attendance and Activiti candidates/assignees still use the internal system userId (or are unified with userid; see the discussion in section 4.5), so WeCom is simply a newly added login method and does not intrude on the existing permission and workflow models.
 
-1. Visit [WeCom Admin Console](https://work.weixin.qq.com/) and register for WeCom (requires administrator operation)
-2. Go to "App Management" -> "Self-built" -> "Create App"
-3. Fill in the application name, logo, visible scope (which departments/employees can use it)
-4. After creation, obtain three key parameters:
+## 2. Setting Up the Development Environment
 
-| Parameter | Description | Location |
+### 2.1 Create a Self-Built Application and Obtain the Three Key Credentials
+
+1. Go to the [WeCom Admin Console](https://work.weixin.qq.com/) and log in with an administrator account
+2. "App Management" → "Self-built" → "Create App"; fill in the app name (e.g., "Mobile Attendance & Approval"), logo, and visible scope
+3. After creation, record three key parameters:
+
+| Parameter | Description | Where to Obtain |
 |------|------|----------|
-| `corpid` | Enterprise unique identifier | My Enterprise -> Enterprise Info -> Enterprise ID |
-| `agentid` | Application unique identifier | App Management -> Self-built App -> AgentId |
-| `secret` | Application secret | App Management -> Self-built App -> Secret |
+| `corpid` | Unique corporation identifier | My Company → Company Info → Corp ID |
+| `agentid` | Unique application identifier | App Management → Self-built App → AgentId |
+| `secret` | Application secret | App Management → Self-built App → Secret |
 
-> ⚠️ `secret` is the most sensitive credential. **It must never appear in frontend code** and must be stored on the server side.
+> ⚠️ The `secret` is the most sensitive credential. **Keep it only on the server side**; it must never appear in H5 front-end code, Git repositories, or browser requests.
 
-### 2.2 Creating a WeCom Mini Program
+### 2.2 Configure the App Home Page (H5 Entry)
 
-The creation process for a WeCom Mini Program is similar to a WeChat Mini Program, but it is bound to the WeCom entity:
+Configure the H5 home page URL at "App Home Page" on the app details page:
 
-1. Log in to [WeCom Admin Console](https://work.weixin.qq.com/) -> "App Management" -> Select self-built app
-2. On the app detail page, find the "Mini Program" module and click "Bind/Create Mini Program"
-3. WeCom supports two ways to associate a mini program:
-   - **Associate existing WeChat Mini Program**: Reuse a mini program registered on WeChat Open Platform, requires the same entity
-   - **Create directly within WeCom**: WeCom self-built mini program, does not depend on WeChat Open Platform
-4. After creation, obtain `wx_app_id` (Mini Program AppID) on the mini program management page
+```
+App Management → Self-built App → App Home Page → Configure Web Page
+  Home page URL: https://attendance.yourcompany.com/mobile/
+```
 
-**Development Tools**: Use [WeChat Developer Tools](https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html) for development and debugging. Select "WeCom Mini Program" mode or associate through the WeCom plugin.
+When an employee taps the app icon in the WeCom Workbench, this URL is opened inside WeCom's built-in browser. We recommend using a dedicated path for the mobile H5 (such as `/mobile/`), separated from the PC admin side, to facilitate router-based traffic splitting and independent layouts.
+
+### 2.3 Configure the Trusted Domain (the Most Critical Backend Configuration for H5)
+
+In H5 mode, both the OAuth web authorization callback domain and the JS-SDK depend on the "trusted domain":
+
+```
+App Management → Self-built App → Developer Interfaces → Web Authorization & JS-SDK
+  → Set trusted domain: attendance.yourcompany.com
+  → Download the domain ownership verification file (WW_verify_xxxx.txt)
+  → Place the file in the domain root directory and ensure it is accessible at:
+    https://attendance.yourcompany.com/WW_verify_xxxx.txt
+```
+
+Domain requirements:
+
+- Must be **HTTPS** (mandatory for OAuth authorization and the JS-SDK)
+- ICP filing completed (for servers in mainland China)
+- The domain ownership verification file is served directly by the front-end static resource service or Nginx
+- One app can have multiple trusted domains (the domain registrant must be consistent), and the callback address must fall under these domains
+
+Also configure the "Enterprise Trusted IP": the egress IP of the server calling server-side APIs must be whitelisted, otherwise endpoints such as `gettoken` return `60020 not allow to access from your ip`.
+
+### 2.4 Configure Message Receiving (Callback, for Card Button Approval)
+
+To implement "tap Approve/Reject directly on the message card" (without opening a page), you need to configure a callback:
+
+```
+App Management → Self-built App → Receive Messages → Set API Receiving
+  URL:             https://attendance.yourcompany.com/api/wecom/callback/message
+  Token:           Custom (used for signature verification)
+  EncodingAESKey:  Randomly generated (used for AES encryption/decryption of message bodies)
+```
+
+If you only need to-do redirection and no in-card interaction, you can skip this for now, but we recommend configuring it from the start (it is used in Chapter 7).
+
+### 2.5 Local Development Environment
+
+The core difficulty of local H5 development is: OAuth callbacks and the JS-SDK require a trusted domain + HTTPS, while locally you only have `http://localhost`. There are two common approaches.
+
+**Option 1: Intranet penetration (recommended; closest to the real environment)**
 
 ```bash
-# Download WeChat Developer Tools (CLI version, for CI)
-# Official download page: https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html
-# CLI path example (macOS):
-/Applications/wechatwebdevtools.app/Contents/MacOS/cli \
-  --login --project /path/to/miniprogram \
-  --preview --qr-output /tmp/preview-qr.png
+# Use frp or ngrok to map local port 8080/the front-end port to a sub-path of the filed domain
+# For example, expose https://dev-attendance.yourcompany.com
+frpc -c frpc.ini
+
+# Allow host-domain access to the Angular dev server (angular.json)
+# serve options: host set to 0.0.0.0, default port 4200
+# angular.json -> projects/<name>.architect.serve.options
+{ "host": "0.0.0.0", "port": 4200 }
+# Or via command line: ng serve --host 0.0.0.0 --port 4200
 ```
 
-### 2.3 Configuring Trusted Domains and Server Domains
+Add the penetration domain to the admin console's trusted domains (during development) and place the verification file in your local static directory to pass verification.
 
-**H5 mode** requires configuring trusted domains (web authorization and JS-SDK):
-
-```
-App Management -> Self-built App -> Developer Interface -> Web Authorization & JS-SDK
-  -> Set Trusted Domain: attendance.yourcompany.com
-  -> Download domain ownership verification file and place it in the domain root directory
-```
-
-**Mini Program mode** requires configuring "Server Domains" in the admin console (request, uploadFile, downloadFile, socket):
-
-```
-App Management -> Self-built App -> Developer Interface -> Mini Program
-  -> Server Domains:
-    request valid domain: https://api.attendance.yourcompany.com
-    uploadFile valid domain: https://upload.attendance.yourcompany.com
-    downloadFile valid domain: https://download.attendance.yourcompany.com
-```
-
-Domains must meet:
-- Support HTTPS (production environment, mandatory for mini programs)
-- ICP filing completed (mainland China servers)
-- request domain does not support IP addresses or localhost
-- Maximum 50 domain configuration changes per month
-
-### 2.4 Local Development Environment
-
-Mini program development uses WeChat Developer Tools. Local HTTPS domain penetration is not needed, but a backend service is still required:
+**Option 2: hosts + mkcert (no public network needed; suitable for pure page joint debugging)**
 
 ```bash
-# Start backend locally (SpringBoot)
-cd ~/work/code/attendance-backend
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
-
-# Configure in Mini Program Developer Tools:
-# - Development Settings -> Do not verify valid domains (check during development phase)
-# - AppID: enter the WeCom Mini Program AppID
-# - Debug base library: select the latest stable version
-```
-
-H5 mode local development needs to resolve HTTPS and domain verification issues:
-
-```bash
-# H5 mode: Use ngrok or frp for internal network penetration
-ngrok http 8080
-
-# Or use mkcert to generate local HTTPS certificates
 mkcert -install
-mkcert localhost 127.0.0.1
-
-# Configure hosts file (point trusted domain to local)
+mkcert attendance.yourcompany.com        # Generate a locally trusted certificate
 # /etc/hosts
 127.0.0.1 attendance.yourcompany.com
 ```
 
-During development, you can configure the trusted domain as the internal network penetration address in the WeCom console, but be mindful of token security.
+> Note: the hosts approach can only fool the browser's certificate verification. The WeCom client's OAuth authorization still goes to the real WeCom servers and then redirects back; during real-device debugging the phone cannot use your computer's hosts. Therefore, **real-device debugging must use an intranet-penetration domain**.
 
-## III. Mini Program Project Structure
+**Starting the back end locally**:
 
-The project structure of a WeCom Mini Program is identical to a WeChat Mini Program. Using TypeScript for development provides better type safety and development experience.
-
-### 3.1 Directory Structure
-
-```
-miniprogram/
-├── app.ts                    # Mini program entry logic
-├── app.json                  # Mini program global configuration
-├── app.wxss                  # Global styles
-├── sitemap.json              # Search configuration
-├── project.config.json       # Project configuration (AppID, build settings, etc.)
-├── tsconfig.json             # TypeScript configuration
-├── typings/                  # Type declarations
-│   ├── index.d.ts
-│   └── wecom.d.ts            # WeCom API type supplements
-├── pages/
-│   ├── index/                # Home page (attendance check-in)
-│   │   ├── index.ts
-│   │   ├── index.wxml
-│   │   ├── index.wxss
-│   │   └── index.json
-│   ├── records/              # Check-in records
-│   │   ├── index.ts
-│   │   ├── index.wxml
-│   │   ├── index.wxss
-│   │   └── index.json
-│   ├── apply/                # Make-up check-in application
-│   │   ├── index.ts
-│   │   ├── index.wxml
-│   │   ├── index.wxss
-│   │   └── index.json
-│   └── scan/                 # QR code scan check-in
-│       ├── index.ts
-│       ├── index.wxml
-│       ├── index.wxss
-│       └── index.json
-├── components/
-│   ├── checkin-button/      # Check-in button component
-│   └── location-card/       # Location info card
-├── services/                 # Business service layer
-│   ├── auth.service.ts       # Authentication service
-│   ├── checkin.service.ts   # Check-in service
-│   └── api.service.ts       # HTTP request wrapper
-├── utils/
-│   ├── request.ts            # Request utility (with token injection)
-│   ├── location.ts           # Location utility
-│   └── format.ts             # Formatting utility
-└── config/
-    ├── env.ts               # Environment configuration
-    └── constant.ts           # Constants
+```bash
+cd ~/work/code/attendance-backend
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-### 3.2 app.json Global Configuration
+## 3. Integrating the H5 Front-End Project
 
-```json
-{
-  "pages": [
-    "pages/index/index",
-    "pages/records/index",
-    "pages/apply/index",
-    "pages/scan/index"
-  ],
-  "window": {
-    "navigationBarTitleText": "Attendance System",
-    "navigationBarBackgroundColor": "#128BF3",
-    "navigationBarTextStyle": "white",
-    "backgroundColor": "#F5F5F5",
-    "enablePullDownRefresh": false
-  },
-  "tabBar": {
-    "color": "#999999",
-    "selectedColor": "#128BF3",
-    "list": [
-      {
-        "pagePath": "pages/index/index",
-        "text": "Check-in"
-      },
-      {
-        "pagePath": "pages/records/index",
-        "text": "Records"
-      }
-    ]
-  },
-  "permission": {
-    "scope.userLocation": {
-      "desc": "Used for attendance check-in location verification"
-    }
-  },
-  "requiredPrivateInfos": [
-    "getLocation"
-  ],
-  "usingComponents": {}
-}
+### 3.1 Directory Structure (Reuse the Existing Angular Project; Add a Mobile Module)
+
+There is no need to create a new project. In the existing Angular + TypeScript project, add a lazy-loaded mobile module (feature module / routes) and a WeCom adaptation layer:
+
+```
+attendance-web/
+├── src/
+│   ├── main.ts
+│   ├── index.html                   # You can also import jweixin via a <script> tag here
+│   ├── app/
+│   │   ├── app.routes.ts            # Main router entry (PC/mobile traffic split)
+│   │   ├── mobile/                  # H5 mobile side inside WeCom (lazy-loaded module)
+│   │   │   ├── mobile.routes.ts     # Mobile child routes
+│   │   │   ├── guards/
+│   │   │   │   └── wecom-auth.guard.ts   # Silent login route guard (CanActivate)
+│   │   │   └── pages/
+│   │   │       ├── checkin/checkin.component.ts      # Check-in home page
+│   │   │       ├── records/records.component.ts      # Check-in records
+│   │   │       ├── todo/todo-list.component.ts       # Approval to-do (Activiti tasks)
+│   │   │       ├── todo/approval-detail.component.ts # Approval detail (countersign/or-sign progress)
+│   │   │       ├── apply/makeup-apply.component.ts   # Make-up check-in application (triggers process)
+│   │   │       └── oauth/oauth-callback.component.ts # OAuth callback landing page
+│   │   ├── core/
+│   │   │   ├── interceptors/
+│   │   │   │   └── auth.interceptor.ts   # HttpClient interceptor (injects JWT, re-login on 401)
+│   │   │   └── services/            # Reuse existing business services
+│   │   │       ├── checkin.service.ts
+│   │   │       └── approval.service.ts
+│   │   └── wecom/                   # WeCom adaptation layer (the core addition this time)
+│   │       ├── env.service.ts       # Whether inside WeCom, UA detection
+│   │       ├── oauth.service.ts     # OAuth2 silent login redirect logic
+│   │       ├── jssdk.service.ts     # wx.config / agentConfig / signatures
+│   │       └── device.service.ts    # Geolocation, camera, scan wrappers
+├── public/ (or src/)
+│   └── WW_verify_xxxx.txt           # Domain ownership verification file (place at static resource root)
+└── angular.json
 ```
 
-> ⚠️ Since 2023, WeCom Mini Programs require declaring `requiredPrivateInfos` in `app.json`, otherwise privacy APIs like `wx.getLocation` cannot be called.
+### 3.2 Importing the WeCom JS-SDK
 
-### 3.3 app.ts Entry Logic
+WeCom H5 uses the `jweixin` module (it shares the same origin as the WeChat Official Account JSSDK; WeCom extends it with `wx.agentConfig` and enterprise-specific APIs):
+
+```bash
+npm install weixin-js-sdk --save
+# Or import directly in index.html
+# <script src="https://res.wx.qq.com/open/js/jweixin-1.2.0.js"></script>
+```
 
 ```typescript
-// app.ts
-interface AppData {
-  userInfo?: WeComUserInfo;
-  sessionKey?: string;
-  serverToken?: string;
-}
+// src/app/wecom/env.service.ts
+import { Injectable } from '@angular/core';
 
-interface WeComUserInfo {
-  userid: string;
-  name: string;
-  avatar?: string;
-  department?: number[];
-}
+@Injectable({ providedIn: 'root' })
+export class WecomEnvService {
+  /** Whether the app is currently running inside the WeCom client */
+  isInWecom(): boolean {
+    const ua = navigator.userAgent.toLowerCase();
+    // The WeCom UA contains both wxwork and micromessenger
+    return /wxwork/.test(ua) && /micromessenger/.test(ua);
+  }
 
-App<AppData>({
-  globalData: {
-    userInfo: undefined,
-    sessionKey: undefined,
-    serverToken: undefined,
-  },
-
-  onLaunch() {
-    // Execute WeCom login on mini program launch
-    this.qyLogin();
-  },
-
-  /**
-   * WeCom login flow
-   * 1. Call wx.qyLogin to get code
-   * 2. Send code to backend
-   * 3. Backend exchanges code for userid and session_key
-   * 4. Cache server token for subsequent business requests
-   */
-  async qyLogin() {
-    try {
-      const { code } = await wx.qyLogin({
-        desc: 'Get WeCom identity',
-      });
-
-      if (!code) {
-        console.error('qyLogin did not return code');
-        return;
-      }
-
-      // Send code to backend to exchange for token
-      const result = await this.requestLogin(code);
-
-      this.globalData.serverToken = result.token;
-      this.globalData.userInfo = result.userInfo;
-
-      console.log('WeCom login successful', result.userInfo.userid);
-    } catch (err) {
-      console.error('WeCom login failed', err);
-      wx.showToast({ title: 'Login failed, please retry', icon: 'error' });
-    }
-  },
-
-  /**
-   * Call backend login API
-   */
-  requestLogin(code: string): Promise<{ token: string; userInfo: WeComUserInfo }> {
-    return new Promise((resolve, reject) => {
-      wx.request({
-        url: 'https://api.attendance.yourcompany.com/api/auth/qy-login',
-        method: 'POST',
-        data: { code },
-        success: (res) => {
-          if (res.statusCode === 200 && res.data.code === 0) {
-            resolve(res.data.data);
-          } else {
-            reject(new Error(res.data.message || 'Login failed'));
-          }
-        },
-        fail: reject,
-      });
-    });
-  },
-
-  /**
-   * Get server token (with local cache)
-   */
-  getServerToken(): string | undefined {
-    return this.globalData.serverToken;
-  },
-});
-```
-
-> 💡 **Comparison with H5 mode**: H5 mode requires OAuth2 web authorization redirect to obtain code, involving page redirects and URL parameter handling. Mini program mode obtains code directly via `wx.qyLogin` without page redirection, providing a smoother experience.
-
-### 3.4 TypeScript Configuration
-
-```json
-// tsconfig.json
-{
-  "compilerOptions": {
-    "target": "ES2017",
-    "module": "CommonJS",
-    "moduleResolution": "node",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "lib": ["ES2017"],
-    "typeRoots": ["./node_modules/@types", "./typings"],
-    "rootDir": ".",
-    "outDir": "miniprogram"
-  },
-  "include": ["./**/*.ts"],
-  "exclude": ["node_modules"]
+  /** Whether it is iOS (JS-SDK signature URL handling differs; see Chapter 5) */
+  isIOS(): boolean {
+    return /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+  }
 }
 ```
 
-### 3.5 WeCom API Type Declarations
+### 3.3 Routing and the Silent Login Guard
 
-The base library types for WeChat Mini Programs do not include WeCom-specific APIs, so supplementary declarations are needed:
+All mobile business routes sit behind a single `CanActivate` guard: if there is no system token, it initiates OAuth silent login, and after successful login returns to the original page. This is the master switch for "tap the app and get logged in automatically"; Chapter 4 covers it in detail.
 
 ```typescript
-// typings/wecom.d.ts
+// src/app/mobile/mobile.routes.ts
+import { Routes } from '@angular/router';
+import { WecomAuthGuard } from './guards/wecom-auth.guard';
 
-declare interface WeComQyLoginOption {
-  desc?: string;
-  success?: (res: { code: string }) => void;
-  fail?: (err: { errMsg: string }) => void;
-  complete?: () => void;
-}
+export const MOBILE_ROUTES: Routes = [
+  { path: '', pathMatch: 'full', redirectTo: 'checkin' },
+  {
+    path: 'checkin',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () => import('./pages/checkin/checkin.component').then(m => m.CheckinComponent),
+  },
+  {
+    path: 'records',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () => import('./pages/records/records.component').then(m => m.RecordsComponent),
+  },
+  {
+    path: 'todo',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () => import('./pages/todo/todo-list.component').then(m => m.TodoListComponent),
+  },
+  {
+    path: 'approval/:taskId',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () =>
+      import('./pages/todo/approval-detail.component').then(m => m.ApprovalDetailComponent),
+  },
+  {
+    path: 'apply/makeup',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () =>
+      import('./pages/apply/makeup-apply.component').then(m => m.MakeupApplyComponent),
+  },
+  // OAuth callback landing page: no guard
+  {
+    path: 'oauth/callback',
+    loadComponent: () =>
+      import('./pages/oauth/oauth-callback.component').then(m => m.OauthCallbackComponent),
+  },
+];
+```
 
-declare interface WeComSelectEnterpriseContactOption {
-  from?: number;
-  selectedDepartmentIds?: number[];
-  selectedUserIds?: string[];
-  mode?: 'multi' | 'single';
-  type?: 'department' | 'user' | 'department_and_user';
-  selectedDepartmentPaths?: string[];
-  success?: (res: {
-    result: {
-      departmentIdList: number[];
-    };
-  }) => void;
-  fail?: (err: { errMsg: string }) => void;
-}
+```typescript
+// src/app/mobile/guards/wecom-auth.guard.ts
+import { inject } from '@angular/core';
+import { CanActivateFn } from '@angular/router';
+import { WecomOAuthService } from '../../wecom/oauth.service';
 
-declare interface WeComOption {
-  corpId: string;
-  agentId: string;
-  timestamp: string;
-  nonceStr: string;
-  signature: string;
-}
+export const WecomAuthGuard: CanActivateFn = (route, state) => {
+  const oauth = inject(WecomOAuthService);
 
-declare namespace WeCom {
-  interface UserInfo {
-    userid: string;
-    name: string;
-    department?: number[];
-    avatar?: string;
-    email?: string;
-    mobile?: string;
+  // Core: ensure logged in; when not logged in, redirectToWecomAuth triggers a full-page redirect to OAuth
+  if (oauth.hasToken()) {
+    return true;
   }
-
-  interface InvokeResult {
-    err_msg: string;
-    [key: string]: any;
-  }
-}
-
-declare const wx: {
-  // WeCom-specific APIs
-  qyLogin(option: WeComQyLoginOption): void;
-  selectEnterpriseContact(option: WeComSelectEnterpriseContactOption): void;
-  qwChooseEnterpriseContact(option: WeComSelectEnterpriseContactOption): void;
-
-  // Common APIs (WeChat Mini Program base library)
-  request(option: any): WeApp.RequestTask;
-  getLocation(option: WeApp.GetLocationOption): void;
-  chooseImage(option: any): void;
-  chooseMedia(option: any): void;
-  scanCode(option: any): void;
-  setStorage(option: any): void;
-  getStorage(option: any): void;
-  showToast(option: any): void;
-  [key: string]: any;
+  oauth.redirectToWecomAuth(state.url);   // Will leave the current page
+  return new Promise<boolean>(() => false); // Block this navigation, waiting for the full-page redirect
 };
 ```
 
-## IV. WeCom Mini Program Identity Authentication
-
-### 4.1 Login Flow Overview
-
-The login flow for WeCom Mini Programs is simpler than H5 OAuth, and is completely seamless:
-
-```
-Mini Program                Backend Service           WeCom API
-  │                          │                        │
-  │  1. wx.qyLogin()         │                        │
-  │ ─────────────────────────│                        │
-  │  get code               │                        │
-  │                          │                        │
-  │  2. POST /auth/qy-login  │                        │
-  │    (code)                │                        │
-  │ ─────────────────────────▶                        │
-  │                          │  3. gettoken            │
-  │                          │ ────────────────────────▶
-  │                          │  access_token          │
-  │                          │ ◀───────────────────────│
-  │                          │                        │
-  │                          │  4. jscode2session      │
-  │                          │ ────────────────────────▶
-  │                          │  userid + session_key  │
-  │                          │ ◀───────────────────────│
-  │                          │                        │
-  │                          │  5. Generate JWT/Session│
-  │                          │    Cache to Redis       │
-  │                          │                        │
-  │  6. Return JWT + userInfo │                        │
-  │ ◀─────────────────────────                        │
-  │                          │                        │
-  │  7. Subsequent requests carry JWT │                │
-  │ ─────────────────────────▶                        │
-```
-
-### 4.2 Mini Program Side: wx.qyLogin
-
-`wx.qyLogin` is a WeCom Mini Program-specific API. The returned `code` is used to exchange for user identity on the server side.
+Lazy-load the entire mobile module under the `mobile` path in the root routes:
 
 ```typescript
-// services/auth.service.ts
-
-export class AuthService {
-  private static instance: AuthService;
-  private serverToken: string | null = null;
-  private userInfo: WeCom.UserInfo | null = null;
-
-  static getInstance(): AuthService {
-    if (!AuthService.instance) {
-      AuthService.instance = new AuthService();
-    }
-    return AuthService.instance;
-  }
-
-  /**
-   * WeCom login
-   * The code returned by wx.qyLogin is valid for 5 minutes and can only be used once
-   */
-  async qyLogin(): Promise<void> {
-    const { code } = await this.callQyLogin();
-    if (!code) {
-      throw new Error('qyLogin did not obtain code');
-    }
-
-    const result = await this.exchangeToken(code);
-    this.serverToken = result.token;
-    this.userInfo = result.userInfo;
-
-    // Cache token locally (no re-login needed within validity period)
-    wx.setStorage({
-      key: 'server_token',
-      data: result.token,
-    });
-  }
-
-  private callQyLogin(): Promise<{ code: string }> {
-    return new Promise((resolve, reject) => {
-      wx.qyLogin({
-        desc: 'Get WeCom identity',
-        success: resolve,
-        fail: reject,
-      });
-    });
-  }
-
-  private async exchangeToken(code: string) {
-    return new Promise<{ token: string; userInfo: WeCom.UserInfo }>(
-      (resolve, reject) => {
-        wx.request({
-          url: 'https://api.attendance.yourcompany.com/api/auth/qy-login',
-          method: 'POST',
-          data: { code },
-          success: (res) => {
-            if (res.statusCode === 200 && res.data.code === 0) {
-              resolve(res.data.data);
-            } else {
-              reject(new Error(res.data?.message || 'Token exchange failed'));
-            }
-          },
-          fail: reject,
-        });
-      },
-    );
-  }
-
-  getToken(): string | null {
-    return this.serverToken;
-  }
-
-  getUserInfo(): WeCom.UserInfo | null {
-    return this.userInfo;
-  }
-}
-```
-
-### 4.3 Backend: Exchanging code for userid
-
-The backend uses `code` to call the WeCom `jscode2session` API to obtain `userid` and `session_key`.
-
-**API Endpoint**:
-
-```
-GET https://qyapi.weixin.qq.com/cgi-bin/service/miniprogram/jscode2session
-  ?access_token=ACCESS_TOKEN
-  &js_code=CODE
-  &grant_type=authorization_code
-```
-
-**SpringBoot Implementation**:
-
-```java
-/**
- * WeCom Authentication Controller
- *
- * @author cuckoom
- */
-@RestController
-@RequestMapping("/api/auth")
-@Slf4j
-public class QyAuthController {
-
-    @Resource
-    private QyAuthService qyAuthService;
-
-    @Resource
-    private JwtTokenProvider jwtTokenProvider;
-
-    /**
-     * Mini program login: exchange code for userid, issue JWT
-     *
-     * @param request Mini program login request
-     * @return JWT token + user info
-     */
-    @PostMapping("/qy-login")
-    public Result<QyLoginVO> qyLogin(@RequestBody @Valid QyLoginDTO request) {
-        log.info("WeCom mini program login, code={}", request.getCode());
-        try {
-            // 1. Exchange code for userid and session_key
-            QySessionDTO session = qyAuthService.code2Session(request.getCode());
-            log.info("Login successful, userid={}", session.getUserid());
-
-            // 2. Query/create user record
-            SysUser user = qyAuthService.getOrCreateUser(session.getUserid());
-
-            // 3. Issue JWT
-            String token = jwtTokenProvider.generateToken(user.getId(), user.getWecomUserId());
-
-            // 4. Cache session_key (for decrypting encrypted data later)
-            qyAuthService.cacheSessionKey(session.getUserid(), session.getSessionKey());
-
-            // 5. Build response object
-            QyLoginVO vo = new QyLoginVO();
-            vo.setToken(token);
-            vo.setUserInfo(QyUserInfoVO.builder()
-                    .userid(user.getWecomUserId())
-                    .name(user.getName())
-                    .avatar(user.getAvatar())
-                    .department(user.getDepartmentIds())
-                    .build());
-
-            return Result.success(vo);
-        } catch (BusinessException e) {
-            log.warn("WeCom login business exception: {}", e.getMessage());
-            return Result.fail(e.getCode(), e.getMessage());
-        } catch (Exception e) {
-            log.error("WeCom login system exception", e);
-            return Result.fail(ErrorCode.SYSTEM_ERROR);
-        }
-    }
-}
-```
-
-```java
-/**
- * WeCom Authentication Service
- *
- * @author cuckoom
- */
-@Service
-@Slf4j
-public class QyAuthService {
-
-    private static final String SESSION_KEY_CACHE_PREFIX = "wecom:session_key:";
-
-    @Value("${wecom.corpid}")
-    private String corpId;
-
-    @Value("${wecom.agentid}")
-    private String agentId;
-
-    @Value("${wecom.secret}")
-    private String secret;
-
-    @Resource
-    private WecomTokenManager tokenManager;
-
-    @Resource
-    private RestTemplate restTemplate;
-
-    @Resource
-    private StringRedisTemplate redisTemplate;
-
-    @Resource
-    private SysUserMapper userMapper;
-
-    /**
-     * Exchange mini program code for session
-     *
-     * @param code code returned by wx.qyLogin
-     * @return userid + session_key
-     */
-    public QySessionDTO code2Session(String code) {
-        String accessToken = tokenManager.getAccessToken();
-
-        String url = String.format(
-                "https://qyapi.weixin.qq.com/cgi-bin/service/miniprogram/jscode2session" +
-                        "?access_token=%s&js_code=%s&grant_type=authorization_code",
-                accessToken, code
-        );
-
-        JSONObject response = restTemplate.getForObject(url, JSONObject.class);
-        if (response == null || response.getIntValue("errcode") != 0) {
-            throw new BusinessException(ErrorCode.QY_LOGIN_FAILED,
-                    "Failed to exchange code for session: " + (response == null ? "null" : response.getString("errmsg")));
-        }
-
-        return QySessionDTO.builder()
-                .userid(response.getString("userid"))
-                .sessionKey(response.getString("session_key"))
-                .build();
-    }
-
-    /**
-     * Query or create system user
-     */
-    public SysUser getOrCreateUser(String wecomUserId) {
-        SysUser user = userMapper.findByWecomUserId(wecomUserId);
-        if (user != null) {
-            return user;
-        }
-
-        // New user: get details via address book API and persist
-        WecomUserDTO wecomUser = getUserInfoByApi(wecomUserId);
-        user = new SysUser();
-        user.setWecomUserId(wecomUserId);
-        user.setName(wecomUser.getName());
-        user.setAvatar(wecomUser.getAvatar());
-        user.setDepartmentIds(wecomUser.getDepartment());
-        user.setMobile(wecomUser.getMobile());
-        user.setEmail(wecomUser.getEmail());
-        user.setStatus(1);
-        user.setCreateTime(LocalDateTime.now());
-        user.setUpdateTime(LocalDateTime.now());
-        userMapper.insert(user);
-
-        return user;
-    }
-
-    /**
-     * Cache session_key (valid for 7 days)
-     */
-    public void cacheSessionKey(String userid, String sessionKey) {
-        String key = SESSION_KEY_CACHE_PREFIX + userid;
-        redisTemplate.opsForValue().set(key, sessionKey, 7, TimeUnit.DAYS);
-    }
-
-    /**
-     * Get cached session_key
-     */
-    public String getSessionKey(String userid) {
-        return redisTemplate.opsForValue().get(SESSION_KEY_CACHE_PREFIX + userid);
-    }
-
-    /**
-     * Get user details via address book API
-     */
-    private WecomUserDTO getUserInfoByApi(String userid) {
-        String accessToken = tokenManager.getAccessToken();
-        String url = String.format(
-                "https://qyapi.weixin.qq.com/cgi-bin/user/get?access_token=%s&userid=%s",
-                accessToken, userid
-        );
-
-        JSONObject response = restTemplate.getForObject(url, JSONObject.class);
-        if (response == null || response.getIntValue("errcode") != 0) {
-            throw new BusinessException(ErrorCode.WECOM_API_ERROR,
-                    "Failed to get user info: " + (response == null ? "null" : response.getString("errmsg")));
-        }
-
-        return WecomUserDTO.builder()
-                .userid(response.getString("userid"))
-                .name(response.getString("name"))
-                .avatar(response.getString("avatar"))
-                .department(response.getJSONArray("department").toJavaList(Integer.class))
-                .mobile(response.getString("mobile"))
-                .email(response.getString("email"))
-                .build();
-    }
-}
-```
-
-### 4.4 JWT Authentication Interceptor
-
-```java
-/**
- * JWT Authentication Interceptor
- * Validates the Authorization token in request header
- *
- * @author cuckoom
- */
-@Component
-@Slf4j
-public class JwtAuthInterceptor implements HandlerInterceptor {
-
-    @Resource
-    private JwtTokenProvider jwtTokenProvider;
-
-    private static final String AUTH_HEADER = "Authorization";
-    private static final String TOKEN_PREFIX = "Bearer ";
-
-    @Override
-    public boolean preHandle(HttpServletRequest request,
-                             HttpServletResponse response,
-                             Object handler) {
-        // Allow login and callback endpoints
-        String uri = request.getRequestURI();
-        if (uri.contains("/api/auth/") || uri.contains("/api/wecom/callback/")) {
-            return true;
-        }
-
-        String header = request.getHeader(AUTH_HEADER);
-        if (header == null || !header.startsWith(TOKEN_PREFIX)) {
-            sendError(response, 401, "Missing authentication info");
-            return false;
-        }
-
-        String token = header.substring(TOKEN_PREFIX.length());
-        try {
-            Claims claims = jwtTokenProvider.parseToken(token);
-            Long userId = claims.get("userId", Long.class);
-            String wecomUserId = claims.get("wecomUserId", String.class);
-
-            // Store user info in request for Controller use
-            request.setAttribute("currentUserId", userId);
-            request.setAttribute("currentWecomUserId", wecomUserId);
-
-            return true;
-        } catch (ExpiredJwtException e) {
-            sendError(response, 401, "Token expired, please log in again");
-            return false;
-        } catch (Exception e) {
-            log.warn("JWT validation failed", e);
-            sendError(response, 401, "Invalid authentication info");
-            return false;
-        }
-    }
-
-    private void sendError(HttpServletResponse response, int code, String msg) {
-        response.setStatus(code);
-        response.setContentType("application/json;charset=UTF-8");
-        try {
-            response.getWriter().write(JSONUtil.toJsonStr(Result.fail(code, msg)));
-        } catch (IOException e) {
-            log.error("Failed to write error response", e);
-        }
-    }
-}
-```
-
-> 💡 **Difference from H5 mode**: H5 mode uses OAuth2 web authorization, which requires constructing an authorization link -> user consent -> redirect callback -> backend exchanging for userid. The process involves multiple page redirects. Mini program mode obtains code in one step via `wx.qyLogin`, and the backend directly exchanges for userid without user awareness, providing a better experience.
-
-## V. Attendance Check-in Feature Implementation
-
-### 5.1 Backend API Integration
-
-#### 5.1.1 access_token Management
-
-access_token is the global ticket for WeCom APIs. All server-side API calls require it.
-
-**API Endpoint**:
-
-```
-GET https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=CORPID&corpsecret=SECRET
-```
-
-**Response**:
-
-```json
-{
-  "errcode": 0,
-  "errmsg": "ok",
-  "access_token": "***",
-  "expires_in": 7200
-}
-```
-
-**Key Strategies**:
-- Valid for 7200 seconds (2 hours), needs proactive refresh
-- The valid access_token for the same application is unique. Repeated retrieval will invalidate the old token
-- **Must be obtained on the server side**, cannot be called directly from the frontend (would expose secret)
-- Recommended to use Redis cache with an expiration of 7100 seconds (100-second margin)
-- Multi-instance deployment requires distributed locks to prevent concurrent refresh
-
-**SpringBoot Token Manager**:
-
-```java
-/**
- * WeCom access_token Manager
- * Uses Redis cache + distributed lock to prevent concurrent refresh
- *
- * @author cuckoom
- */
-@Component
-@Slf4j
-public class WecomTokenManager {
-
-    private static final String TOKEN_CACHE_KEY = "wecom:access_token";
-    private static final String TOKEN_LOCK_KEY = "wecom:access_token:lock";
-    private static final long TOKEN_EXPIRE_SECONDS = 7100;
-
-    @Value("${wecom.corpid}")
-    private String corpId;
-
-    @Value("${wecom.secret}")
-    private String secret;
-
-    @Resource
-    private StringRedisTemplate redisTemplate;
-
-    @Resource
-    private RestTemplate restTemplate;
-
-    /**
-     * Get access_token (double-check + distributed lock)
-     */
-    public String getAccessToken() {
-        // 1. Check cache first
-        String cached = redisTemplate.opsForValue().get(TOKEN_CACHE_KEY);
-        if (StrUtil.isNotBlank(cached)) {
-            return cached;
-        }
-
-        // 2. Acquire distributed lock
-        Boolean locked = redisTemplate.opsForValue()
-                .setIfAbsent(TOKEN_LOCK_KEY, "1", 10, TimeUnit.SECONDS);
-        if (Boolean.FALSE.equals(locked)) {
-            // Failed to acquire lock, wait and retry
-            return waitForToken();
-        }
-
-        try {
-            // 3. Double check
-            cached = redisTemplate.opsForValue().get(TOKEN_CACHE_KEY);
-            if (StrUtil.isNotBlank(cached)) {
-                return cached;
-            }
-
-            // 4. Call WeCom API to refresh
-            return refreshTokenFromWecom();
-        } finally {
-            // 5. Release lock
-            redisTemplate.delete(TOKEN_LOCK_KEY);
-        }
-    }
-
-    /**
-     * Call WeCom API to get new token
-     */
-    private String refreshTokenFromWecom() {
-        String url = String.format(
-                "https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=%s&corpsecret=%s",
-                corpId, secret
-        );
-
-        JSONObject response = restTemplate.getForObject(url, JSONObject.class);
-        if (response == null || response.getIntValue("errcode") != 0) {
-            throw new BusinessException(ErrorCode.WECOM_API_ERROR,
-                    "Failed to get access_token: " + (response == null ? "null" : response.getString("errmsg")));
-        }
-
-        String accessToken = response.getString("access_token");
-        redisTemplate.opsForValue().set(
-                TOKEN_CACHE_KEY, accessToken,
-                TOKEN_EXPIRE_SECONDS, TimeUnit.SECONDS
-        );
-
-        log.info("WeCom access_token refreshed successfully");
-        return accessToken;
-    }
-
-    /**
-     * Wait for other instances to refresh token
-     */
-    private String waitForToken() {
-        for (int i = 0; i < 5; i++) {
-            try {
-                Thread.sleep(200);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-            String token = redisTemplate.opsForValue().get(TOKEN_CACHE_KEY);
-            if (StrUtil.isNotBlank(token)) {
-                return token;
-            }
-        }
-        throw new BusinessException(ErrorCode.WECOM_API_ERROR, "Timed out getting access_token");
-    }
-}
-```
-
-#### 5.1.2 Address Book Management
-
-Through the address book API, you can synchronize enterprise organizational structure and employee information.
-
-**Get Department List**:
-
-```
-GET https://qyapi.weixin.qq.com/cgi-bin/department/list?access_token=TOKEN&id=0
-```
-
-**Get Department Member Details**:
-
-```
-GET https://qyapi.weixin.qq.com/cgi-bin/user/list?access_token=TOKEN&department_id=1&fetch_child=1
-```
-
-**Response Example**:
-
-```json
-{
-  "errcode": 0,
-  "errmsg": "ok",
-  "userlist": [
-    {
-      "userid": "zhangsan",
-      "name": "Zhang San",
-      "department": [1, 2],
-      "position": "Product Manager",
-      "mobile": "13800138000",
-      "email": "zhangsan@company.com",
-      "status": 1,
-      "avatar": "https://..."
-    }
-  ]
-}
-```
-
-**Sync Strategy**: It is recommended to perform a full address book sync daily at midnight, while configuring address book change callbacks (see the callback chapter below) to achieve incremental real-time sync.
-
-#### 5.1.3 Request Utility Wrapper
-
-The mini program side wraps a unified request utility that automatically injects the JWT token:
-
-```typescript
-// utils/request.ts
-
-interface RequestOptions {
-  url: string;
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  data?: Record<string, any>;
-  header?: Record<string, string>;
-}
-
-interface ApiResponse<T = any> {
-  code: number;
-  message: string;
-  data: T;
-}
-
-const BASE_URL = 'https://api.attendance.yourcompany.com';
-
-export async function request<T = any>(options: RequestOptions): Promise<T> {
-  const app = getApp<AppData>();
-
-  const header: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...options.header,
-  };
-
-  // Automatically inject JWT token
-  const token = app.getServerToken();
-  if (token) {
-    header['Authorization'] = `Bearer ${token}`;
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    wx.request({
-      url: `${BASE_URL}${options.url}`,
-      method: options.method || 'GET',
-      data: options.data,
-      header,
-      success: (res) => {
-        if (res.statusCode === 401) {
-          // Token expired, re-login
-          app.qyLogin();
-          reject(new Error('Session expired'));
-          return;
-        }
-        if (res.statusCode === 200) {
-          const body = res.data as ApiResponse<T>;
-          if (body.code === 0) {
-            resolve(body.data);
-          } else {
-            wx.showToast({ title: body.message || 'Request failed', icon: 'error' });
-            reject(new Error(body.message));
-          }
-        } else {
-          reject(new Error(`HTTP ${res.statusCode}`));
-        }
-      },
-      fail: (err) => {
-        wx.showToast({ title: 'Network error', icon: 'error' });
-        reject(err);
-      },
-    });
-  });
-}
-```
-
-### 5.2 Geolocation Check-in
-
-Geolocation is the core feature of an attendance system. The mini program obtains device location directly via `wx.getLocation` without JS-SDK signature verification (which H5 mode requires).
-
-#### 5.2.1 Mini Program Implementation
-
-```typescript
-// utils/location.ts
-
-interface LocationInfo {
-  latitude: number;
-  longitude: number;
-  accuracy: number;  // Location accuracy (meters)
-  speed: number;
-}
-
-/**
- * Get current location
- * Requires declaring requiredPrivateInfos: ["getLocation"] in app.json
- */
-export async function getCurrentLocation(): Promise<LocationInfo> {
-  // Check location permission
-  const hasPermission = await checkLocationPermission();
-  if (!hasPermission) {
-    const granted = await requestLocationPermission();
-    if (!granted) {
-      throw new Error('Please allow location permission to use check-in');
-    }
-  }
-
-  // High-accuracy positioning mode
-  return new Promise((resolve, reject) => {
-    wx.getLocation({
-      type: 'gcj02',
-      altitude: true,
-      isHighAccuracy: true,
-      highAccuracyExpireTime: 5000,
-      success: (res) => {
-        resolve({
-          latitude: res.latitude,
-          longitude: res.longitude,
-          accuracy: res.accuracy,
-          speed: res.speed,
-        });
-      },
-      fail: (err) => {
-        console.error('Failed to get location', err);
-        reject(new Error('Failed to get location, please check if GPS is enabled'));
-      },
-    });
-  });
-}
-
-/**
- * Check location permission
- */
-function checkLocationPermission(): Promise<boolean> {
-  return new Promise((resolve) => {
-    wx.getSetting({
-      success: (res) => {
-        resolve(res.authSetting['scope.userLocation'] === true);
-      },
-      fail: () => resolve(false),
-    });
-  });
-}
-
-/**
- * Request location permission
- */
-function requestLocationPermission(): Promise<boolean> {
-  return new Promise((resolve) => {
-    wx.authorize({
-      scope: 'scope.userLocation',
-      success: () => resolve(true),
-      fail: () => {
-        // Guide user to settings page
-        wx.showModal({
-          title: 'Location Permission',
-          content: 'Check-in requires location permission, please enable it in settings',
-          confirmText: 'Go to Settings',
-          success: (res) => {
-            if (res.confirm) {
-              wx.openSetting({
-                success: (settingRes) => {
-                  resolve(settingRes.authSetting['scope.userLocation'] === true);
-                },
-                fail: () => resolve(false),
-              });
-            } else {
-              resolve(false);
-            }
-          },
-        });
-      },
-    });
-  });
-}
-
-/**
- * Calculate distance between two points (Haversine formula)
- */
-export function calculateDistance(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number,
-): number {
-  const R = 6371000; // Earth radius (meters)
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
-```
-
-#### 5.2.2 Check-in Page
-
-```typescript
-// pages/index/index.ts
-
-import { getCurrentLocation, calculateDistance } from '../../utils/location';
-import { request } from '../../utils/request';
-
-interface CheckinPageData {
-  currentDate: string;
-  currentTime: string;
-  locationText: string;
-  distance: number;
-  inRange: boolean;
-  loading: boolean;
-}
-
-// Company check-in range configuration
-const COMPANY_LAT = 30.2741;
-const COMPANY_LNG = 120.1551;
-const ALLOWED_RADIUS = 200; // Allowed check-in radius (meters)
-
-Page<CheckinPageData, WeApp.IAnyObject>({
-  data: {
-    currentDate: '',
-    currentTime: '',
-    locationText: '',
-    distance: 0,
-    inRange: false,
-    loading: false,
+// src/app/app.routes.ts
+export const APP_ROUTES: Routes = [
+  {
+    path: 'mobile',
+    loadChildren: () => import('./mobile/mobile.routes').then(m => m.MOBILE_ROUTES),
   },
-
-  onShow() {
-    this.updateTime();
-    setInterval(this.updateTime, 1000);
-  },
-
-  updateTime() {
-    const now = new Date();
-    this.setData({
-      currentDate: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
-      currentTime: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`,
-    });
-  },
-
-  async handleCheckin() {
-    if (this.data.loading) return;
-    this.setData({ loading: true });
-
-    try {
-      // 1. Get location
-      const location = await getCurrentLocation();
-
-      // 2. Calculate distance
-      const distance = calculateDistance(
-        location.latitude,
-        location.longitude,
-        COMPANY_LAT,
-        COMPANY_LNG,
-      );
-
-      const inRange = distance <= ALLOWED_RADIUS;
-
-      this.setData({
-        distance: Math.round(distance),
-        inRange,
-        locationText: inRange ? 'Within check-in range' : `${Math.round(distance)}m from company`,
-      });
-
-      if (!inRange) {
-        wx.showModal({
-          title: 'Out of Range',
-          content: `You are ${Math.round(distance)}m from the company, exceeding the allowed range of ${ALLOWED_RADIUS}m.`,
-          showCancel: false,
-        });
-        return;
-      }
-
-      // 3. Submit check-in
-      const result = await request<{ checkinId: string; time: string }>({
-        url: '/api/checkin/submit',
-        method: 'POST',
-        data: {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          accuracy: location.accuracy,
-          distance: Math.round(distance),
-          checkinTime: new Date().toISOString(),
-        },
-      });
-
-      wx.showToast({ title: 'Check-in successful', icon: 'success' });
-      console.log('Check-in result', result);
-    } catch (err) {
-      console.error('Check-in failed', err);
-      wx.showToast({
-        title: err.message || 'Check-in failed',
-        icon: 'error',
-      });
-    } finally {
-      this.setData({ loading: false });
-    }
-  },
-});
+  // ...PC admin-side routes
+];
 ```
+## 4. The Complete OAuth2 Silent Automatic Login (SSO) Chain
 
-#### 5.2.3 Backend Check-in API
+This is the core of the entire integration. Target experience: an employee taps the app icon in WeCom (or taps an approval message card), and while the page opens **there is no login page and no confirmation button at all**; after a second or two they land directly on the business page, and the back end already knows "which person in the system they are".
 
-```java
-/**
- * Attendance Check-in Controller
- *
- * @author cuckoom
- */
-@RestController
-@RequestMapping("/api/checkin")
-@Slf4j
-public class CheckinController {
+### 4.1 Choosing the Authorization Mode: snsapi_base
 
-    @Resource
-    private CheckinService checkinService;
+WeCom web authorization supports two scopes:
 
-    /**
-     * Submit check-in
-     *
-     * @param request Check-in request
-     * @param userId Current user ID (injected from JWT interceptor)
-     */
-    @PostMapping("/submit")
-    public Result<CheckinVO> submit(
-            @RequestBody @Valid CheckinDTO request,
-            HttpServletRequest httpRequest
-    ) {
-        Long userId = (Long) httpRequest.getAttribute("currentUserId");
-        String wecomUserId = (String) httpRequest.getAttribute("currentWecomUserId");
+| scope | Confirmation popup | What you can get | Applicable |
+|-------|-----------|-----------|------|
+| `snsapi_base` | **Silent, no popup whatsoever** | Only the member's userid (exchanged via the back end) | Automatic login for in-house enterprise apps, **used in this article** |
+| `snsapi_privateinfo` | Requires manual user confirmation | userid + sensitive info (phone/email, etc., requires member authorization) | Rare scenarios requiring additional privacy fields |
 
-        log.info("User {} submitting check-in, location=({},{})",
-                wecomUserId, request.getLatitude(), request.getLongitude());
+For an in-house self-built application whose visible scope already covers the users, `snsapi_base` is completely silent inside the WeCom client — this is exactly the foundation of automatic login. We don't need phone numbers or emails at this step (those can be queried by userid through the server-side contacts API), so we always use `snsapi_base`.
 
-        CheckinVO vo = checkinService.checkin(userId, request);
-        return Result.success(vo);
-    }
-
-    /**
-     * Query today's check-in records
-     */
-    @GetMapping("/today")
-    public Result<List<CheckinVO>> todayRecords(HttpServletRequest httpRequest) {
-        Long userId = (Long) httpRequest.getAttribute("currentUserId");
-        return Result.success(checkinService.getTodayRecords(userId));
-    }
-}
-```
-
-```java
-/**
- * Attendance Check-in Service
- *
- * @author cuckoom
- */
-@Service
-@Slf4j
-public class CheckinService {
-
-    @Value("${attendance.company.latitude}")
-    private double companyLat;
-
-    @Value("${attendance.company.longitude}")
-    private double companyLng;
-
-    @Value("${attendance.allowed-radius:200}")
-    private double allowedRadius;
-
-    @Resource
-    private CheckinRecordMapper checkinMapper;
-
-    @Resource
-    private WecomMessageService messageService;
-
-    /**
-     * Check in
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public CheckinVO checkin(Long userId, CheckinDTO dto) {
-        // 1. Distance validation
-        double distance = calculateDistance(
-                dto.getLatitude(), dto.getLongitude(),
-                companyLat, companyLng
-        );
-
-        if (distance > allowedRadius) {
-            throw new BusinessException(ErrorCode.OUT_OF_RANGE,
-                    String.format("Out of check-in range, %.0fm from company", distance));
-        }
-
-        // 2. Prevent duplicate check-in (same type within 5 minutes)
-        String checkinType = determineCheckinType(LocalDateTime.now());
-        CheckinRecord existing = checkinMapper.findRecentRecord(
-                userId, checkinType, 5
-        );
-        if (existing != null) {
-            throw new BusinessException(ErrorCode.DUPLICATE_CHECKIN,
-                    "Already checked in within 5 minutes, please do not duplicate check-in");
-        }
-
-        // 3. Save check-in record
-        CheckinRecord record = new CheckinRecord();
-        record.setUserId(userId);
-        record.setCheckinType(checkinType);
-        record.setLatitude(dto.getLatitude());
-        record.setLongitude(dto.getLongitude());
-        record.setAccuracy(dto.getAccuracy());
-        record.setDistance(Math.round(distance));
-        record.setCheckinTime(LocalDateTime.now());
-        record.setCreateTime(LocalDateTime.now());
-        checkinMapper.insert(record);
-
-        // 4. Push check-in success notification
-        messageService.sendCheckinNotification(record);
-
-        return CheckinVO.builder()
-                .checkinId(record.getId().toString())
-                .time(record.getCheckinTime().toString())
-                .type(checkinType)
-                .distance(Math.round(distance))
-                .build();
-    }
-
-    private static double calculateDistance(double lat1, double lng1,
-                                            double lat2, double lng2) {
-        final double R = 6371000;
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLng = Math.toRadians(lng2 - lng1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
-                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        return 2 * R * Math.asin(Math.sqrt(a));
-    }
-
-    private String determineCheckinType(LocalDateTime now) {
-        int hour = now.getHour();
-        if (hour < 12) {
-            return "CLOCK_IN";  // Clock in
-        } else {
-            return "CLOCK_OUT"; // Clock out
-        }
-    }
-}
-```
-
-> 💡 **Comparison with H5 mode**: H5 mode requires `wx.getLocation` via JS-SDK, which first requires `wx.config` signature verification. The signature URL handling differs between iOS and Android, leading to many pitfalls. Mini program mode calls `wx.getLocation` directly without signatures, with unified APIs, providing significantly better development experience.
-
-### 5.3 Photo Check-in
-
-Photo check-in is used for scenarios requiring on-site photo evidence (e.g., field work check-in, make-up check-in explanation).
-
-#### 5.3.1 Mini Program Implementation
-
-```typescript
-// pages/index/index.ts (Photo check-in portion)
-
-import { request } from '../../utils/request';
-
-/**
- * Photo check-in
- * Uses wx.chooseMedia to get photos (recommended, replaces deprecated wx.chooseImage)
- */
-async handlePhotoCheckin() {
-  if (this.data.loading) return;
-  this.setData({ loading: true });
-
-  try {
-    // 1. Take photo
-    const media = await this.takePhoto();
-    if (!media.tempFilePath) {
-      throw new Error('Photo capture failed');
-    }
-
-    // 2. Get location (photo check-in also requires location validation)
-    const location = await getCurrentLocation();
-    const distance = calculateDistance(
-      location.latitude,
-      location.longitude,
-      COMPANY_LAT,
-      COMPANY_LNG,
-    );
-
-    // 3. Upload photo to server
-    const uploadResult = await this.uploadPhoto(
-      media.tempFilePath,
-      location.latitude,
-      location.longitude,
-    );
-
-    wx.showToast({ title: 'Photo check-in successful', icon: 'success' });
-    console.log('Upload result', uploadResult);
-  } catch (err) {
-    console.error('Photo check-in failed', err);
-    wx.showToast({ title: err.message || 'Photo check-in failed', icon: 'error' });
-  } finally {
-    this.setData({ loading: false });
-  }
-}
-
-/**
- * Take photo using camera
- */
-private takePhoto(): Promise<{ tempFilePath: string }> {
-  return new Promise((resolve, reject) => {
-    wx.chooseMedia({
-      count: 1,
-      mediaType: ['image'],
-      sourceType: ['camera'],     // Only allow camera, no album selection (anti-cheating)
-      camera: 'back',              // Rear camera
-      sizeType: ['compressed'],    // Compressed upload
-      success: (res) => {
-        if (res.tempFiles && res.tempFiles.length > 0) {
-          resolve({ tempFilePath: res.tempFiles[0].tempFilePath });
-        } else {
-          reject(new Error('No photo obtained'));
-        }
-      },
-      fail: (err) => {
-        reject(new Error('Photo cancelled or failed'));
-      },
-    });
-  });
-}
-
-/**
- * Upload photo to server
- */
-private uploadPhoto(filePath: string, latitude: number, longitude: number): Promise<any> {
-  const app = getApp<AppData>();
-  const token = app.getServerToken();
-
-  return new Promise((resolve, reject) => {
-    wx.uploadFile({
-      url: 'https://api.attendance.yourcompany.com/api/checkin/photo',
-      filePath,
-      name: 'photo',
-      formData: {
-        latitude: String(latitude),
-        longitude: String(longitude),
-        checkinTime: new Date().toISOString(),
-      },
-      header: {
-        Authorization: token ? `Bearer ${token}` : '',
-      },
-      success: (res) => {
-        if (res.statusCode === 200) {
-          const body = JSON.parse(res.data);
-          if (body.code === 0) {
-            resolve(body.data);
-          } else {
-            reject(new Error(body.message || 'Upload failed'));
-          }
-        } else {
-          reject(new Error(`Upload failed HTTP ${res.statusCode}`));
-        }
-      },
-      fail: reject,
-    });
-  });
-}
-```
-
-#### 5.3.2 Backend Photo Upload API
-
-```java
-/**
- * Photo Check-in Controller
- *
- * @author cuckoom
- */
-@RestController
-@RequestMapping("/api/checkin")
-@Slf4j
-public class CheckinPhotoController {
-
-    @Resource
-    private CheckinService checkinService;
-
-    @Resource
-    private FileStorageService fileStorageService;
-
-    /**
-     * Photo check-in upload
-     *
-     * @param file Photo file
-     * @param latitude Latitude
-     * @param longitude Longitude
-     */
-    @PostMapping("/photo")
-    public Result<CheckinVO> photoCheckin(
-            @RequestParam("photo") MultipartFile file,
-            @RequestParam("latitude") double latitude,
-            @RequestParam("longitude") double longitude,
-            HttpServletRequest httpRequest
-    ) {
-        Long userId = (Long) httpRequest.getAttribute("currentUserId");
-
-        // 1. Validate file
-        if (file.isEmpty()) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "Photo cannot be empty");
-        }
-        if (file.getSize() > 5 * 1024 * 1024) {
-            throw new BusinessException(ErrorCode.FILE_TOO_LARGE, "Photo cannot exceed 5MB");
-        }
-        String contentType = file.getContentType();
-        if (contentType == null || !contentType.startsWith("image/")) {
-            throw new BusinessException(ErrorCode.FILE_TYPE_ERROR, "Only image formats are supported");
-        }
-
-        // 2. Store photo to internal network (not publicly accessible)
-        String photoPath = fileStorageService.store(file, "checkin/" + userId);
-
-        // 3. Create check-in record
-        CheckinDTO dto = new CheckinDTO();
-        dto.setLatitude(latitude);
-        dto.setLongitude(longitude);
-        dto.setPhotoPath(photoPath);
-
-        CheckinVO vo = checkinService.photoCheckin(userId, dto);
-        return Result.success(vo);
-    }
-}
-```
-
-### 5.4 QR Code Scan Check-in
-
-QR code scan check-in is suitable for scenarios like workstation sign-in, meeting room sign-in, where users scan a fixed QR code to complete check-in.
-
-#### 5.4.1 Mini Program Implementation
-
-```typescript
-// pages/scan/index.ts
-
-import { request } from '../../utils/request';
-
-interface ScanPageData {
-  scanning: boolean;
-  result: string;
-}
-
-Page<ScanPageData, WeApp.IAnyObject>({
-  data: {
-    scanning: false,
-    result: '',
-  },
-
-  async handleScan() {
-    if (this.data.scanning) return;
-    this.setData({ scanning: true });
-
-    try {
-      // 1. Call QR code scan
-      const res = await this.scanQRCode();
-      const qrContent = res.result;
-
-      if (!qrContent) {
-        throw new Error('Scan content is empty');
-      }
-
-      // 2. Validate QR code content (must contain specific prefix)
-      if (!qrContent.startsWith('wecom-attendance://')) {
-        throw new Error('Not an attendance QR code, cannot check in');
-      }
-
-      // 3. Extract token
-      const qrToken = qrContent.replace('wecom-attendance://', '');
-
-      // 4. Get location simultaneously (anti-cheating: scan + location dual verification)
-      const location = await getCurrentLocation();
-
-      // 5. Submit scan check-in
-      const result = await request<{ checkinId: string; time: string }>({
-        url: '/api/checkin/scan',
-        method: 'POST',
-        data: {
-          qrToken,
-          latitude: location.latitude,
-          longitude: location.longitude,
-        },
-      });
-
-      this.setData({ result: 'Check-in successful' });
-      wx.showToast({ title: 'Scan check-in successful', icon: 'success' });
-      console.log('Scan check-in result', result);
-    } catch (err) {
-      console.error('Scan check-in failed', err);
-      this.setData({ result: err.message || 'Scan check-in failed' });
-      wx.showToast({ title: err.message || 'Scan check-in failed', icon: 'error' });
-    } finally {
-      this.setData({ scanning: false });
-    }
-  },
-
-  /**
-   * Call wx.scanCode to scan QR code
-   */
-  scanQRCode(): Promise<{ result: string }> {
-    return new Promise((resolve, reject) => {
-      wx.scanCode({
-        onlyFromCamera: true,   // Only allow scanning from camera (anti-screenshot cheating)
-        scanType: ['qrCode'],   // Only scan QR codes
-        success: resolve,
-        fail: () => {
-          reject(new Error('Scan cancelled or failed'));
-        },
-      });
-    });
-  },
-});
-```
-
-#### 5.4.2 Backend Scan Check-in API
-
-```java
-/**
- * Scan Check-in Controller
- *
- * @author cuckoom
- */
-@RestController
-@RequestMapping("/api/checkin")
-@Slf4j
-public class ScanCheckinController {
-
-    @Resource
-    private CheckinService checkinService;
-
-    /**
-     * Scan check-in
-     *
-     * @param request Scan check-in request
-     */
-    @PostMapping("/scan")
-    public Result<CheckinVO> scanCheckin(
-            @RequestBody @Valid ScanCheckinDTO request,
-            HttpServletRequest httpRequest
-    ) {
-        Long userId = (Long) httpRequest.getAttribute("currentUserId");
-
-        log.info("User {} scan check-in, qrToken={}", userId, request.getQrToken());
-
-        CheckinVO vo = checkinService.scanCheckin(userId, request);
-        return Result.success(vo);
-    }
-}
-```
-
-```java
-/**
- * Scan Check-in Service Implementation
- *
- * @author cuckoom
- */
-@Service
-@Slf4j
-public class ScanCheckinServiceImpl implements CheckinService {
-
-    @Resource
-    private QrTokenMapper qrTokenMapper;
-
-    @Resource
-    private CheckinRecordMapper checkinMapper;
-
-    @Resource
-    private WecomMessageService messageService;
-
-    private static final double COMPANY_LAT = 30.2741;
-    private static final double COMPANY_LNG = 120.1551;
-    private static final double ALLOWED_RADIUS = 200;
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public CheckinVO scanCheckin(Long userId, ScanCheckinDTO dto) {
-        // 1. Validate QR code token
-        QrToken qrToken = qrTokenMapper.findByToken(dto.getQrToken());
-        if (qrToken == null) {
-            throw new BusinessException(ErrorCode.INVALID_QR_TOKEN, "Invalid check-in QR code");
-        }
-        if (qrToken.getExpireTime().isBefore(LocalDateTime.now())) {
-            throw new BusinessException(ErrorCode.EXPIRED_QR_TOKEN, "Check-in QR code has expired");
-        }
-        if (qrToken.getStatus() == 0) {
-            throw new BusinessException(ErrorCode.QR_TOKEN_DISABLED, "Check-in QR code has been disabled");
-        }
-
-        // 2. Location validation
-        double distance = calculateDistance(
-                dto.getLatitude(), dto.getLongitude(),
-                COMPANY_LAT, COMPANY_LNG
-        );
-        if (distance > ALLOWED_RADIUS) {
-            throw new BusinessException(ErrorCode.OUT_OF_RANGE,
-                    String.format("Out of check-in range, %.0fm from company", distance));
-        }
-
-        // 3. Prevent duplicate check-in
-        CheckinRecord existing = checkinMapper.findRecentRecord(userId, "SCAN", 5);
-        if (existing != null) {
-            throw new BusinessException(ErrorCode.DUPLICATE_CHECKIN, "Already scanned check-in within 5 minutes");
-        }
-
-        // 4. Save check-in record
-        CheckinRecord record = new CheckinRecord();
-        record.setUserId(userId);
-        record.setCheckinType("SCAN");
-        record.setQrTokenId(qrToken.getId());
-        record.setLatitude(dto.getLatitude());
-        record.setLongitude(dto.getLongitude());
-        record.setDistance(Math.round(distance));
-        record.setCheckinTime(LocalDateTime.now());
-        record.setCreateTime(LocalDateTime.now());
-        checkinMapper.insert(record);
-
-        // 5. Push notification
-        messageService.sendCheckinNotification(record);
-
-        return CheckinVO.builder()
-                .checkinId(record.getId().toString())
-                .time(record.getCheckinTime().toString())
-                .type("SCAN")
-                .distance(Math.round(distance))
-                .build();
-    }
-
-    // ... other methods omitted
-}
-```
-
-## VI. Message Push and Callbacks
-
-### 6.1 Application Message Push
-
-Message push is an important capability of WeCom applications, used for attendance reminders, approval notifications, and other scenarios.
-
-**Send Application Message**:
+### 4.2 End-to-End Sequence
 
 ```
-POST https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=TOKEN
+WeCom client       H5 front end (WebView)      Business back end            WeCom server
+    │                   │                     │                     │
+    │ Open app home page    │                     │                     │
+    │──────────────────▶│                     │                     │
+    │                   │ Route guard: no token  │                     │
+    │                   │ 302 redirect to authorization URL    │                     │
+    │◀──────────────────│                     │                     │
+    │ Silent authorization (transparent)  │                     │                     │
+    │───────────────────────────────────────▶│                     │
+    │ 302 redirect back to callback?code=xxx&state=yyy    │                     │
+    │──────────────────▶│                     │                     │
+    │                   │ POST /auth/wecom/login {code}             │
+    │                   │────────────────────▶│                     │
+    │                   │                     │ gettoken            │
+    │                   │                     │────────────────────▶│
+    │                   │                     │◀────────────────────│
+    │                   │                     │ auth/getuserinfo    │
+    │                   │                     │  (code→userid)      │
+    │                   │                     │────────────────────▶│
+    │                   │                     │◀────────────────────│
+    │                   │                     │ userid→look up/create system account │
+    │                   │                     │ Issue JWT           │
+    │                   │◀────────────────────│                     │
+    │                   │ Store token, redirect back to target page │                     │
+    │                   │ Subsequent requests carry JWT        │                     │
 ```
 
-**Text Message**:
+Note two key points:
 
-```json
-{
-  "touser": "zhangsan|lisi",
-  "toparty": "2|3",
-  "totag": "tag1",
-  "msgtype": "text",
-  "agentid": 1000002,
-  "text": {
-    "content": "Your clock-in time today is 09:00, please check in on time."
-  },
-  "duplicate_check_interval": 1800
-}
-```
+1. **The code is only exchanged on the back end**: the front end never calls WeCom APIs directly (that would expose the secret). The front end is only responsible for "guiding the redirect" and "handing the code on the redirect URL to the back end".
+2. **The authorization URL can be assembled on either the front end or the back end**, but the `state`-based CSRF protection and the "redirect back to the original page after login" logic must be managed by yourself.
 
-**Text Card Message** (recommended, can jump to application page):
+### 4.3 Step 1: Construct the Authorization URL and Redirect
 
-```json
-{
-  "touser": "zhangsan",
-  "msgtype": "textcard",
-  "agentid": 1000002,
-  "textcard": {
-    "title": "Attendance Reminder",
-    "description": "15 minutes until clock-in deadline, please check in on time.",
-    "url": "https://attendance.yourcompany.com/checkin",
-    "btntxt": "Go Check-in"
-  }
-}
-```
-
-**Template Card Message** (supports interactive buttons, suitable for approval notifications):
-
-```json
-{
-  "touser": "zhangsan",
-  "msgtype": "template_card",
-  "agentid": 1000002,
-  "template_card": {
-    "card_type": "button_interaction",
-    "source": {
-      "desc": "Attendance System"
-    },
-    "main_title": {
-      "title": "Make-up Check-in Approval",
-      "desc": "Li Si requests make-up check-in for 2026-07-08 morning"
-    },
-    "sub_title_text": "Reason: Forgot to check in, workstation surveillance footage as evidence",
-    "button_list": [
-      {
-        "text": "Approve",
-        "style": 1,
-        "key": "approve"
-      },
-      {
-        "text": "Reject",
-        "style": 2,
-        "key": "reject"
-      }
-    ],
-    "task_id": "task_20260708_001"
-  }
-}
-```
-
-> 💡 **Mini Program Jump**: The `url` field of text cards and template cards supports mini program jump paths (e.g., `#wecom-miniprogram://pages/index/index`). Users can click the message to directly open the corresponding mini program page instead of an H5 link.
-
-**SpringBoot Message Push Implementation**:
-
-```java
-/**
- * WeCom Message Push Service
- *
- * @author cuckoom
- */
-@Service
-@Slf4j
-public class WecomMessageService {
-
-    @Resource
-    private WecomTokenManager tokenManager;
-
-    @Resource
-    private RestTemplate restTemplate;
-
-    @Value("${wecom.agentid}")
-    private Integer agentId;
-
-    /**
-     * Send check-in success notification
-     */
-    public void sendCheckinNotification(CheckinRecord record) {
-        String userid = getUserId(record.getUserId());
-        if (StrUtil.isBlank(userid)) {
-            log.warn("Unable to get WeCom userid, skipping push: userId={}", record.getUserId());
-            return;
-        }
-
-        String typeText = "CLOCK_IN".equals(record.getCheckinType()) ? "Clock-in" : "Clock-out";
-        if ("SCAN".equals(record.getCheckinType())) {
-            typeText = "Scan";
-        }
-
-        Map<String, Object> message = new HashMap<>();
-        message.put("touser", userid);
-        message.put("msgtype", "textcard");
-        message.put("agentid", agentId);
-
-        Map<String, Object> textCard = new HashMap<>();
-        textCard.put("title", "Check-in Successful");
-        textCard.put("description", String.format(
-                "%s check-in successful\nTime: %s\nDistance from company: %dm",
-                typeText,
-                record.getCheckinTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
-                record.getDistance()
-        ));
-        // Mini program jump link
-        textCard.put("url", "#wecom-miniprogram://pages/records/index");
-        textCard.put("btntxt", "View Records");
-        message.put("textcard", textCard);
-
-        sendMessage(message);
-    }
-
-    /**
-     * Send attendance reminder
-     */
-    public void sendCheckinReminder(String wecomUserId, String content) {
-        Map<String, Object> message = new HashMap<>();
-        message.put("touser", wecomUserId);
-        message.put("msgtype", "text");
-        message.put("agentid", agentId);
-
-        Map<String, Object> text = new HashMap<>();
-        text.put("content", content);
-        message.put("text", text);
-
-        sendMessage(message);
-    }
-
-    private void sendMessage(Map<String, Object> message) {
-        String accessToken = tokenManager.getAccessToken();
-        String url = "https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=" + accessToken;
-
-        try {
-            JSONObject response = restTemplate.postForObject(
-                    url, message, JSONObject.class
-            );
-            if (response != null && response.getIntValue("errcode") == 0) {
-                log.info("Message push successful: {}", response.getString("msgid"));
-            } else {
-                log.error("Message push failed: {}", response);
-            }
-        } catch (Exception e) {
-            log.error("Message push exception", e);
-        }
-    }
-
-    private String getUserId(Long userId) {
-        // Query system user table to get WeCom userid
-        return userMapper.findWecomUserIdById(userId);
-    }
-}
-```
-
-### 6.2 Data Callbacks
-
-WeCom supports various event callbacks, including address book changes, contact application status changes, template card button callbacks, etc. Callbacks are sent as HTTP POST to the developer-configured URL.
-
-#### 6.2.1 Configuring Callback URL
-
-Configure in the WeCom Admin Console:
-
-```
-App Management -> Self-built App -> Receive Messages -> Set API Reception
-  -> URL: https://api.attendance.yourcompany.com/api/wecom/callback/message
-  -> Token: Custom Token (for signature verification)
-  -> EncodingAESKey: Randomly generated (for message encryption/decryption)
-```
-
-#### 6.2.2 Callback Signature Verification and Decryption
-
-WeCom callback messages are encrypted with AES, requiring signature verification and decryption:
-
-```java
-/**
- * WeCom Callback Controller
- *
- * @author cuckoom
- */
-@RestController
-@RequestMapping("/api/wecom/callback")
-@Slf4j
-public class WecomCallbackController {
-
-    @Resource
-    private WecomCallbackService callbackService;
-
-    /**
-     * URL verification (GET request)
-     * WeCom verifies URL validity when configuring callback URL
-     */
-    @GetMapping("/message")
-    public String verifyUrl(
-            @RequestParam("msg_signature") String msgSignature,
-            @RequestParam("timestamp") String timestamp,
-            @RequestParam("nonce") String nonce,
-            @RequestParam("echostr") String echoStr
-    ) {
-        log.info("WeCom callback URL verification");
-        try {
-            return callbackService.verifyUrl(msgSignature, timestamp, nonce, echoStr);
-        } catch (Exception e) {
-            log.error("URL verification failed", e);
-            return "";
-        }
-    }
-
-    /**
-     * Receive event callback (POST request)
-     */
-    @PostMapping(value = "/message", produces = "application/xml")
-    public String receiveCallback(
-            @RequestParam("msg_signature") String msgSignature,
-            @RequestParam("timestamp") String timestamp,
-            @RequestParam("nonce") String nonce,
-            @RequestBody String encryptedMsg
-    ) {
-        log.info("Received WeCom callback");
-        try {
-            callbackService.handleCallback(msgSignature, timestamp, nonce, encryptedMsg);
-            return "success";
-        } catch (Exception e) {
-            log.error("Callback processing failed", e);
-            return "success"; // Return success to prevent WeCom retries
-        }
-    }
-}
-```
-
-#### 6.2.3 Template Card Button Callback
-
-When users click buttons in template card messages, WeCom pushes button events to the callback URL:
-
-```java
-/**
- * WeCom Callback Service
- *
- * @author cuckoom
- */
-@Service
-@Slf4j
-public class WecomCallbackService {
-
-    @Value("${wecom.callback.token}")
-    private String callbackToken;
-
-    @Value("${wecom.callback.encoding-aes-key}")
-    private String encodingAesKey;
-
-    @Value("${wecom.corpid}")
-    private String corpId;
-
-    @Resource
-    private RestTemplate restTemplate;
-
-    @Resource
-    private ApplyApprovalService approvalService;
-
-    /**
-     * Handle callback event
-     */
-    public void handleCallback(String msgSignature, String timestamp,
-                               String nonce, String encryptedMsg) {
-        // 1. Decrypt message
-        WecomCallbackMessage message = decryptMessage(msgSignature, timestamp, nonce, encryptedMsg);
-
-        // 2. Process by event type
-        String eventType = message.getEventType();
-        switch (eventType) {
-            case "template_card_event":
-                handleTemplateCardEvent(message);
-                break;
-            case "change_contact":
-                handleContactChange(message);
-                break;
-            default:
-                log.info("Unhandled event type: {}", eventType);
-        }
-    }
-
-    /**
-     * Handle template card button click event
-     */
-    private void handleTemplateCardEvent(WecomCallbackMessage message) {
-        String taskId = message.getTaskId();
-        String buttonKey = message.getButtonKey();
-        String userId = message.getUserId();
-
-        log.info("Template card button click: taskId={}, buttonKey={}, userId={}",
-                taskId, buttonKey, userId);
-
-        if ("approve".equals(buttonKey)) {
-            approvalService.approve(taskId, userId);
-        } else if ("reject".equals(buttonKey)) {
-            approvalService.reject(taskId, userId);
-        }
-    }
-
-    /**
-     * Handle address book changes
-     */
-    private void handleContactChange(WecomCallbackMessage message) {
-        String changeType = message.getChangeType();
-        String userId = message.getUserId();
-
-        log.info("Address book change: type={}, userId={}", changeType, userId);
-
-        switch (changeType) {
-            case "create_user":
-                // New employee: create system user
-                break;
-            case "update_user":
-                // Update employee: sync info
-                break;
-            case "delete_user":
-                // Delete employee: disable account
-                break;
-            default:
-                log.info("Unhandled address book change type: {}", changeType);
-        }
-    }
-
-    /**
-     * Decrypt WeCom callback message
-     */
-    private WecomCallbackMessage decryptMessage(String msgSignature, String timestamp,
-                                                 String nonce, String encryptedMsg) {
-        // Verify signature
-        String calculatedSignature = Sha1Util.sha1(
-                callbackToken, timestamp, nonce, encryptedMsg
-        );
-        if (!calculatedSignature.equals(msgSignature)) {
-            throw new BusinessException(ErrorCode.SIGN_VERIFY_FAILED, "Callback signature verification failed");
-        }
-
-        // AES decrypt
-        String decryptedXml = AesUtil.decrypt(encodingAesKey, encryptedMsg, corpId);
-        return XmlUtil.parseXml(decryptedXml, WecomCallbackMessage.class);
-    }
-}
-```
-
-### 6.3 OAuth Differences: Mini Program vs H5
-
-| Comparison Item | WeCom Mini Program | H5 Application |
-|--------|--------------|---------|
-| Auth Entry | `wx.qyLogin()` API call | OAuth2 authorization link page redirect |
-| Code Source | `code` returned by `wx.qyLogin` | `code` from OAuth2 redirect parameter |
-| Code Exchange API | `jscode2session` | `getuserinfo` |
-| User Awareness | Completely silent, no awareness | May require user consent (snsapi_base silent, snsapi_privateinfo requires confirmation) |
-| Information Obtained | userid + session_key | userid (snsapi_base) or detailed info (snsapi_privateinfo) |
-| Security Mechanism | session_key for decrypting encrypted data | No additional encryption layer |
-| Domain Requirements | Server domains (request domain) | Trusted domains (web authorization domain) |
-| Callback Handling | No redirect callback needed | Requires redirect_uri callback page to handle code |
-| Multi-platform Consistency | WeCom guarantees consistency | iOS/Android WebView differences need handling |
-
-**H5 OAuth2 Authorization Flow (for comparison)**:
-
-```
-User clicks application entry
-  -> WeCom constructs authorization link, user consents
-  -> Redirects to callback URL with code
-  -> Backend exchanges code for userid
-  -> Establishes session, returns business token
-```
-
-**Construct Authorization Link**:
+The authorization URL format:
 
 ```
 https://open.weixin.qq.com/connect/oauth2/authorize
   ?appid=CORPID
-  &redirect_uri=https%3A%2F%2Fattendance.yourcompany.com%2Fauth%2Fcallback
+  &redirect_uri=URL_ENCODED_CALLBACK
   &response_type=code
   &scope=snsapi_base
   &agentid=AGENTID
@@ -2241,437 +409,1454 @@ https://open.weixin.qq.com/connect/oauth2/authorize
 
 | Parameter | Description |
 |------|------|
-| `appid` | Enterprise corpid |
-| `redirect_uri` | Callback URL, must be under trusted domain, needs URL encoding |
-| `scope` | `snsapi_base` (silent authorization, only gets userid) or `snsapi_privateinfo` (gets detailed info) |
-| `agentid` | Application agentid |
-| `state` | Anti-CSRF, returned as-is |
+| `appid` | The enterprise corpid (note: although it is called appid here, fill in the corpid) |
+| `redirect_uri` | The URL to redirect back to after authorization; must be URL-encoded and must be under a trusted domain |
+| `response_type` | Fixed to `code` |
+| `scope` | `snsapi_base` |
+| `agentid` | The self-built app's agentid (**must be included**, otherwise on some versions the app identity cannot be obtained) |
+| `state` | Custom parameter, returned by WeCom as-is; used for CSRF prevention + carrying the post-login redirect target path |
+| `#wechat_redirect` | Fixed suffix; must end in this hash form |
 
-## VII. Security Design
-
-### 7.1 access_token Security Management
-
-- access_token must never be exposed to the frontend; it must be obtained and managed on the server side
-- Recommended to use cache (e.g., Redis) with TTL of 7100 seconds (100-second margin)
-- Multi-instance deployment requires distributed locks to prevent concurrent refresh invalidating old tokens
-- Monitor token refresh frequency regularly; abnormally high refresh frequency may indicate leakage
-
-### 7.2 Sensitive Configuration Separation
-
-Sensitive information such as corpid, secret, and agentid should not be hardcoded or committed to code repositories:
-
-```yaml
-# application-prod.yml (production environment)
-wecom:
-  corpid: ${WECOM_CORPID}        # Environment variable injection
-  agentid: ${WECOM_AGENTID}
-  secret: ${WECOM_SECRET}
-  callback:
-    token: ${WECOM_CALLBACK_TOKEN}
-    encoding-aes-key: ${WECOM_CALLBACK_AES_KEY}
-```
-
-```bash
-# Environment variable injection (deployment script)
-export WECOM_CORPID="your_corpid"
-export WECOM_AGENTID="your_agentid"
-export WECOM_SECRET="your_secret"
-```
-
-### 7.3 Mini Program Security Design
-
-The following security points should be noted in mini program mode:
-
-**1. Server Domain Whitelist**:
-- All `wx.request` and `wx.uploadFile` calls must point to configured valid domains
-- Developer tools can check "Do not verify valid domains", but **production environment must be configured correctly**
-- Domains must be HTTPS; HTTP and IP are not supported
-
-**2. JWT Token Management**:
-- Token validity period should not be too long (recommended 2-7 days), refreshed silently via `wx.qyLogin` after expiration
-- Token is stored in mini program Storage, automatically cleared when exiting WeCom
-- Server should record device info corresponding to tokens, support remote revocation
-
-**3. Code Package Security**:
-- Mini program code packages are cached on user devices; never hardcode any sensitive information in code
-- Environment variables and API addresses are injected at build time, distinguishing dev/prod environments
+The front end wraps this in an injectable `WecomOAuthService` (`src/app/wecom/oauth.service.ts`):
 
 ```typescript
-// config/env.ts
-const env = __wxConfig.envVersion; // 'develop' | 'trial' | 'release'
+import { Injectable, inject } from '@angular/core';
+import { WecomEnvService } from './env.service';
 
-export const config = {
-  develop: {
-    apiUrl: 'http://localhost:8080',
-  },
-  trial: {
-    apiUrl: 'https://api-staging.attendance.yourcompany.com',
-  },
-  release: {
-    apiUrl: 'https://api.attendance.yourcompany.com',
-  },
-}[env] || {
-  apiUrl: 'https://api.attendance.yourcompany.com',
-};
+@Injectable({ providedIn: 'root' })
+export class WecomOAuthService {
+  private readonly env = inject(WecomEnvService);
 
-export const API_BASE_URL = config.apiUrl;
+  private readonly CORP_ID = 'ww your_corpid';        // corpid is not highly sensitive and may live on the front end
+  private readonly AGENT_ID = '1000002';              // agentid is also public
+  private readonly CALLBACK =
+    'https://attendance.yourcompany.com/mobile/oauth/callback';
+
+  hasToken(): boolean {
+    return !!localStorage.getItem('sys_token');
+  }
+
+  /** Generate a random state, and temporarily store "the page to go to after login" in sessionStorage */
+  private buildState(redirectPath: string): string {
+    const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    sessionStorage.setItem(`wx_state_${nonce}`, redirectPath || '/mobile/checkin');
+    sessionStorage.setItem('wx_state_nonce', nonce);   // Verified at callback
+    return nonce;
+  }
+
+  /** Initiate silent login: full-page redirect to the WeCom authorization URL */
+  redirectToWecomAuth(redirectPath: string): void {
+    if (!this.env.isInWecom()) {
+      // Non-WeCom environment (e.g. opened directly in a PC browser): use the system username/password login page
+      window.location.href = '/login?redirect=' + encodeURIComponent(redirectPath);
+      return;
+    }
+    const state = this.buildState(redirectPath);
+    const url =
+      'https://open.weixin.qq.com/connect/oauth2/authorize' +
+      `?appid=${encodeURIComponent(this.CORP_ID)}` +
+      `&redirect_uri=${encodeURIComponent(this.CALLBACK)}` +
+      '&response_type=code' +
+      '&scope=snsapi_base' +
+      `&agentid=${this.AGENT_ID}` +
+      `&state=${encodeURIComponent(state)}` +
+      '#wechat_redirect';
+    window.location.replace(url);
+  }
+}
 ```
 
-**4. session_key Protection**:
-- `session_key` is only used on the server side and must never be returned to the frontend
-- Used for decrypting encrypted data (e.g., phone numbers, location, etc.)
-- Cached in Redis with a reasonable TTL
+The route guard only needs to call `hasToken()` to check, and `redirectToWecomAuth()` when not logged in (see `WecomAuthGuard` in 3.3).
 
-### 7.4 API Security
+> corpid and agentid are "public identifiers" (the authorization URL has to appear in plaintext in the browser anyway), so putting them on the front end is harmless; the only real key is the secret, which always lives only on the server side.
 
-- All business APIs require authentication (JWT), except OAuth2 callbacks and WeCom callback endpoints
-- Anti-replay: API signature + timestamp verification
-- Rate limiting: prevent malicious calls using Redis + token bucket or sliding window
-- Input validation: use `@Valid` annotation to validate request parameters
+### 4.4 Step 2: The Callback Landing Page Exchanges the code for a Token
+
+After redirecting back to `/mobile/oauth/callback?code=xxx&state=yyy`, the callback page does three things: verify the state → send the code to the back end → after obtaining the JWT, redirect back to the original target page.
+
+```typescript
+// src/app/mobile/pages/oauth/oauth-callback.component.ts
+import { Component, inject, OnInit, signal } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
+import { AuthService } from '../../../core/services/auth.service';
+
+@Component({
+  selector: 'app-oauth-callback',
+  standalone: true,
+  template: `<div class="oauth-loading">{{ errMsg() }}</div>`,
+})
+export default class OauthCallbackComponent implements OnInit {
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private auth = inject(AuthService);
+
+  protected errMsg = signal('Signing in...');
+
+  async ngOnInit(): Promise<void> {
+    const code = this.route.snapshot.queryParamMap.get('code') ?? '';
+    const state = this.route.snapshot.queryParamMap.get('state') ?? '';
+
+    if (!code) { this.errMsg.set('Authorization failed: missing code'); return; }
+
+    // 1. Verify state to prevent CSRF: it must be the nonce we stored before redirecting
+    const savedNonce = sessionStorage.getItem('wx_state_nonce');
+    if (!state || state !== savedNonce) {
+      this.errMsg.set('Login state verification failed, please re-enter the application');
+      return;
+    }
+    const redirectPath = sessionStorage.getItem(`wx_state_${state}`) || '/mobile/checkin';
+
+    try {
+      // 2. Hand the code to the back end in exchange for the system JWT
+      const { token } = await firstValueFrom(this.auth.loginByWecomCode(code));
+      localStorage.setItem('sys_token', token);
+      sessionStorage.removeItem(`wx_state_${state}`);
+      sessionStorage.removeItem('wx_state_nonce');
+      // 3. Return to the page originally intended (might be a specific approval to-do detail)
+      this.router.navigateByUrl(redirectPath, { replaceUrl: true });
+    } catch (e: any) {
+      this.errMsg.set('Automatic login failed: ' + (e?.message || 'please retry'));
+    }
+  }
+}
+```
+
+```typescript
+// src/app/core/services/auth.service.ts
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, map } from 'rxjs';
+
+interface WecomLoginResp { token: string; userInfo: unknown; }
+
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private http = inject(HttpClient);
+
+  /** Exchange code for JWT: one of the few endpoints that does not require a token (allowed through in the interceptor) */
+  loginByWecomCode(code: string): Observable<WecomLoginResp> {
+    return this.http
+      .post<{ code: number; message: string; data: WecomLoginResp }>(
+        '/api/auth/wecom/login', { code })
+      // Unwrap the back end's unified response envelope { code, message, data } (error-code handling can be done uniformly in an interceptor)
+      .pipe(map((resp) => resp.data));
+  }
+}
+```
+
+### 4.5 Step 3: The Back End Exchanges the code for userid (Core of Authentication)
+
+After the back end receives the code, it must first obtain an access_token, then call two APIs:
+
+- `auth/getuserinfo`: code → userid (internal enterprise member) or openid (non-member/external contact)
+- After obtaining the userid, if needed use `user/get` (contacts) to fill in name, department, and mobile number
+
+**API 1: Obtain the access credential**
+
+```
+GET https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=CORPID&corpsecret=SECRET
+```
+
+Returns an `access_token` (valid for 7200 seconds). The access_token must be centrally managed (Redis cache + distributed lock; see Chapter 8); neither the front end nor other services fetch it themselves.
+
+**API 2: Exchange code for userid**
+
+```
+GET https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo?access_token=TOKEN&code=CODE
+```
+
+For an internal enterprise member it returns:
+
+```json
+{
+  "errcode": 0,
+  "errmsg": "ok",
+  "userid": "zhangsan",
+  "user_ticket": "xxx"
+}
+```
+
+> If it returns an `openid` but no `userid`, the current user is not within the enterprise app's visible scope (possibly an external contact). You should reject the login and prompt them to contact an administrator to grant access, rather than automatically creating an account.
+
+**Login Controller**:
 
 ```java
 /**
- * API Rate Limit Annotation
+ * WeCom H5 silent login
  *
  * @author cuckoom
  */
-@Target(ElementType.METHOD)
-@Retention(RetentionPolicy.RUNTIME)
-public @interface RateLimit {
-    /** Rate limit key prefix */
-    String key() default "";
-    /** Number of requests allowed within the time window */
-    int limit() default 60;
-    /** Time window (seconds) */
-    int window() default 60;
-}
-
-/**
- * Rate limit aspect
- */
-@Aspect
-@Component
+@RestController
+@RequestMapping("/api/auth/wecom")
 @Slf4j
-public class RateLimitAspect {
+public class WecomAuthController {
 
+    @Resource
+    private WecomAuthService wecomAuthService;
+
+    /**
+     * H5 OAuth silent login: exchange code for userid, bind the system account, then issue a JWT
+     */
+    @PostMapping("/login")
+    public Result<WecomLoginVO> login(@RequestBody @Valid WecomLoginDTO dto) {
+        log.info("WeCom H5 silent login, code={}", dto.getCode());
+        WecomLoginVO vo = wecomAuthService.loginByCode(dto.getCode());
+        return Result.success(vo);
+    }
+}
+```
+
+```java
+/**
+ * WeCom silent login Service
+ *
+ * @author cuckoom
+ */
+@Service
+@Slf4j
+public class WecomAuthService {
+
+    @Resource
+    private WecomTokenManager tokenManager;
+    @Resource
+    private RestTemplate restTemplate;
+    @Resource
+    private SysUserService userService;
+    @Resource
+    private JwtTokenProvider jwtTokenProvider;
+
+    public WecomLoginVO loginByCode(String code) {
+        // 1. Exchange code for userid
+        String accessToken = tokenManager.getAccessToken();
+        String url = String.format(
+                "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo?access_token=%s&code=%s",
+                accessToken, code);
+
+        JSONObject resp = restTemplate.getForObject(url, JSONObject.class);
+        if (resp == null || resp.getIntValue("errcode") != 0) {
+            throw new BusinessException(ErrorCode.WECOM_AUTH_FAILED,
+                    "Failed to obtain WeCom identity: " + (resp == null ? "null" : resp.getString("errmsg")));
+        }
+
+        String wecomUserId = resp.getString("userid");
+        if (StrUtil.isBlank(wecomUserId)) {
+            // Only openid: not an internal enterprise member, outside the app's visible scope
+            throw new BusinessException(ErrorCode.WECOM_USER_NOT_IN_SCOPE,
+                    "The current account is not within the app's authorization scope, please contact an administrator");
+        }
+
+        // 2. Map userid to a system account (key; see 4.6)
+        SysUser user = userService.getOrBindByWecomUserId(wecomUserId);
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            throw new BusinessException(ErrorCode.ACCOUNT_DISABLED, "Account has been disabled");
+        }
+
+        // 3. Issue the system's own JWT, reusing the existing authentication system
+        String jwt = jwtTokenProvider.generateToken(user.getId(), user.getUsername());
+        return WecomLoginVO.builder()
+                .token(jwt)
+                .userInfo(UserInfoVO.of(user))
+                .build();
+    }
+}
+```
+
+### 4.6 Step 4: Binding WeCom Accounts to System Accounts (The Most Critical Design for an Existing System)
+
+This is the biggest difference between "an existing business system" and "building a system from scratch": the system already has a batch of accounts (perhaps logging in with employee ID, email, or domain account), and from WeCom only a userid arrives. **You cannot simply "create a new user from the userid"**, otherwise the same person becomes two accounts and attendance records and Activiti to-dos all fail to line up.
+
+Three binding strategies are recommended; choose according to the enterprise's reality:
+
+**Strategy A: Employee ID/account is consistent, bind automatically (most recommended; zero operations overhead)**
+
+The "account" field in the WeCom contacts is usually the enterprise's unified employee ID, and the WeCom userid is often the employee ID as well. Agree that userid = system username (or employee ID), and associate directly by account at login:
+
+```java
+/**
+ * Bind a system account by WeCom userid
+ * Convention: the WeCom userid is identical to the system employee ID (username)
+ */
+public SysUser getOrBindByWecomUserId(String wecomUserId) {
+    // 1. First look up by the already-bound wecom_user_id
+    SysUser user = userMapper.findByWecomUserId(wecomUserId);
+    if (user != null) {
+        return user;
+    }
+
+    // 2. Not bound: try to automatically match an existing account by employee ID (username)
+    user = userMapper.findByUsername(wecomUserId);
+    if (user != null) {
+        // Establish the binding relationship; next time it hits directly
+        user.setWecomUserId(wecomUserId);
+        userMapper.updateById(user);
+        log.info("System account {} automatically bound to WeCom userid {}", user.getUsername(), wecomUserId);
+        return user;
+    }
+
+    // 3. Still no match: do not silently create an account. Return a state requiring guided binding, handled by an administrator or the self-service binding flow
+    throw new BusinessException(ErrorCode.WECOM_ACCOUNT_NOT_BOUND,
+            "No system account associated with this WeCom account was found, please contact an administrator to bind");
+}
+```
+
+**Strategy B: Self-service binding (when account systems are not unified)**
+
+If automatic matching is impossible at first login, let the user enter the system account password once to complete binding; afterwards the mapping between that wecom_user_id and user_id is persisted, granting permanent silent login:
+
+```
+First WeCom login → back end finds no mapping → returns NEED_BIND state
+  → H5 shows a binding page (enter system account/password, or employee ID + SMS code)
+  → back end verifies successfully → writes sys_user.wecom_user_id → issues JWT
+```
+
+The binding relationship is established only once; the credentials are discarded immediately after verification, and no plaintext password is stored.
+
+**Strategy C: Administrator pre-binding / contacts synchronization**
+
+Use the contacts API (`user/list`) to batch-sync by department, aligning WeCom userids with system accounts by employee ID (Chapter 8 provides the sync scheme). Suitable for a one-time initialization before launch.
+
+**User table modification** (add a field to the existing user table without touching the existing structure):
+
+```sql
+ALTER TABLE sys_user ADD COLUMN wecom_user_id VARCHAR(64);
+COMMENT ON COLUMN sys_user.wecom_user_id IS 'WeCom userid (external identity)';
+CREATE UNIQUE INDEX uk_sys_user_wecom ON sys_user (wecom_user_id) WHERE wecom_user_id IS NOT NULL;
+```
+
+> Design point: **the internal userId stays unchanged**. Attendance record foreign keys, Activiti's `ACT_RU_TASK.ASSIGNEE_`, and candidate groups all continue to use the internal system userId (username). The WeCom userid is used only for "identifying the person at login" and "addressing at push time", decoupled through the `sys_user.wecom_user_id` mapping layer. This neither pollutes the workflow definitions nor removes the ability to coexist with PC username/password and other SSO login methods.
+
+### 4.7 Step 5: Seamless Integration of JWT with the Existing Authentication System
+
+After silent login obtains the userid, subsequent requests are exactly the same as on the PC side, going through the system's existing JWT/Session authentication. This means zero changes to attendance and approval APIs.
+
+The front end uses Angular's `HttpInterceptor` to uniformly inject the token and re-run silent login on 401:
+
+```typescript
+// src/app/core/interceptors/auth.interceptor.ts
+import { HttpInterceptorFn, HttpHandlerFn, HttpRequest, HttpErrorResponse }
+  from '@angular/common/http';
+import { inject } from '@angular/core';
+import { catchError, throwError } from 'rxjs';
+import { WecomEnvService } from '../../wecom/env.service';
+
+export const authInterceptor: HttpInterceptorFn = (
+  req: HttpRequest<unknown>, next: HttpHandlerFn,
+) => {
+  const token = localStorage.getItem('sys_token');
+  let authed = req;
+  if (token) {
+    authed = req.clone({ setHeaders: { Authorization: *** ${token}` } });
+  }
+
+  return next(authed).pipe(
+    catchError((error: HttpErrorResponse) => {
+      if (error.status === 401) {
+        // Token expired: re-run silent login inside WeCom (transparent); in external environments go to the login page
+        localStorage.removeItem('sys_token');
+        const env = inject(WecomEnvService);
+        if (env.isInWecom()) {
+          location.reload();   // The route guard automatically initiates OAuth again
+        } else {
+          location.href = '/login?redirect=' + encodeURIComponent(location.pathname);
+        }
+      }
+      return throwError(() => error);
+    }),
+  );
+};
+```
+
+Register it in `app.config.ts` (functional interceptors, Angular 15+):
+
+```typescript
+// src/app/app.config.ts
+import { ApplicationConfig } from '@angular/core';
+import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { APP_ROUTES } from './app.routes';
+import { authInterceptor } from './core/interceptors/auth.interceptor';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(APP_ROUTES, withComponentInputBinding()),
+    provideHttpClient(withInterceptors([authInterceptor])),
+  ],
+};
+```
+
+> The silent login endpoint `/api/auth/wecom/login` itself carries no token; the interceptor lets the "no token in local storage" case pass through unchanged with no special judgment needed; only on 401 does it trigger silent re-login.
+
+The back end keeps the existing Spring Security configuration (SecurityFilterChain Bean form), only allowing the WeCom login and callback endpoints through:
+
+```java
+/**
+ * Spring Security configuration
+ *
+ * @author cuckoom
+ */
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers(
+                        "/api/auth/wecom/**",      // WeCom silent login
+                        "/api/wecom/callback/**"   // WeCom callback
+                ).permitAll()
+                .anyRequest().authenticated()
+            )
+            // Front-end/back-end separation + JWT: stateless, CSRF disabled, JWT filter parses the token
+            .csrf(AbstractHttpConfigurer::disable)
+            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .addFilterBefore(jwtAuthenticationFilter(),
+                    UsernamePasswordAuthenticationFilter.class);
+        return http.build();
+    }
+    // JwtAuthenticationFilter: parses the Authorization header and writes into SecurityContext; reuse the existing implementation
+}
+```
+
+> If your project still uses Spring Security 5.x's `WebSecurityConfigurerAdapter`, the equivalent is to override `configure(HttpSecurity)`, call `permitAll()` on the same two paths and `csrf().disable()`; the JWT issued by silent login is uniformly verified by the existing JWT filter, fully shared with username/password login.
+
+At this point, the chain "tap the app → automatic login → directly see your own attendance and to-dos" is fully connected, and **not a single line of the existing attendance and Activiti APIs, permissions, or data has changed**.
+## 5. JS-SDK: Using Geolocation, Camera, and Scanning in H5
+
+Attendance scenarios cannot do without geolocation, camera, and scanning. Unlike Mini Programs, H5 cannot call native APIs directly; it must go through the WeCom JS-SDK after signature-based authorization. This chapter provides a signature scheme that can be put into practice directly, with a focus on the iOS/Android signature URL difference that is the easiest pitfall.
+
+### 5.1 wx.config and wx.agentConfig
+
+The WeCom JS-SDK has two layers of configuration, which beginners most often confuse:
+
+| Configuration | Purpose | Signature ticket |
+|------|------|----------|
+| `wx.config` | Injects base configuration; invokes general capabilities (sharing, geolocation `getLocation`, scanning `scanQRCode`, choosing images, and most other APIs) | Signed with `jsapi_ticket` |
+| `wx.agentConfig` | Injects the current **self-built application** identity; invokes WeCom-specific APIs (such as `selectEnterpriseContact` contact picker, some approval-related APIs) | Signed with `get_jsapi_ticket` (enterprise app ticket) |
+
+For check-in geolocation/camera/scanning, passing `wx.config` is enough; only enterprise-specific capabilities such as "the organization-chart approver/CC contact picker" require an additional `agentConfig`.
+
+### 5.2 Back End: jsapi_ticket Management and Signing
+
+`jsapi_ticket` is exchanged with an access_token, is valid for 7200 seconds, and likewise needs centralized caching:
+
+```
+GET https://qyapi.weixin.qq.com/cgi-bin/get_jsapi_ticket?access_token=TOKEN
+```
+
+The ticket endpoint for enterprise app agentConfig is `ticket/get?type=agent_config`.
+
+The signature algorithm (specified by WeCom):
+
+```
+string1 = jsapi_ticket={ticket}&noncestr={nonce}&timestamp={timestamp}&url={current page URL}
+signature = SHA1(string1)
+```
+
+```java
+/**
+ * JS-SDK signature Service
+ *
+ * @author cuckoom
+ */
+@Service
+public class WecomJsapiService {
+
+    @Resource
+    private WecomTokenManager tokenManager;
+    @Resource
+    private RestTemplate restTemplate;
     @Resource
     private StringRedisTemplate redisTemplate;
 
-    @Around("@annotation(rateLimit)")
-    public Object around(ProceedingJoinPoint joinPoint, RateLimit rateLimit) throws Throwable {
-        String methodName = joinPoint.getSignature().getName();
-        String key = "rate_limit:" + rateLimit.key() + ":" + methodName;
+    private static final String JSAPI_TICKET_KEY = "wecom:jsapi_ticket";
 
-        Long count = redisTemplate.opsForValue().increment(key);
-        if (count != null && count == 1) {
-            redisTemplate.expire(key, rateLimit.window(), TimeUnit.SECONDS);
+    /** Obtain jsapi_ticket (cached; logic is the same as access_token; the distributed lock is omitted here, see 8.1) */
+    public String getJsapiTicket() {
+        String cached = redisTemplate.opsForValue().get(JSAPI_TICKET_KEY);
+        if (StrUtil.isNotBlank(cached)) {
+            return cached;
         }
-
-        if (count != null && count > rateLimit.limit()) {
-            throw new BusinessException(ErrorCode.RATE_LIMIT_EXCEEDED, "Too many requests, please try again later");
+        String token = tokenManager.getAccessToken();
+        String url = "https://qyapi.weixin.qq.com/cgi-bin/get_jsapi_ticket?access_token=" + token;
+        JSONObject resp = restTemplate.getForObject(url, JSONObject.class);
+        if (resp == null || resp.getIntValue("errcode") != 0) {
+            throw new BusinessException(ErrorCode.WECOM_API_ERROR, "Failed to obtain jsapi_ticket");
         }
+        String ticket = resp.getString("ticket");
+        redisTemplate.opsForValue().set(JSAPI_TICKET_KEY, ticket, 7100, TimeUnit.SECONDS);
+        return ticket;
+    }
 
-        return joinPoint.proceed();
+    /**
+     * Generate the signature required by wx.config
+     * @param pageUrl The page URL used for signing, sent from the front end (see 5.3 for the special iOS handling)
+     */
+    public WxConfigSignatureVO buildConfigSignature(String pageUrl) {
+        String ticket = getJsapiTicket();
+        String nonceStr = IdUtil.fastSimpleUUID();
+        String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
+
+        // Note: the url participating in the signature must exactly match the front-end location.href (including hash handling rules; see below)
+        String raw = String.format(
+                "jsapi_ticket=%s&noncestr=%s&timestamp=%s&url=%s",
+                ticket, nonceStr, timestamp, pageUrl);
+        String signature = SecureUtil.sha1(raw);
+
+        return WxConfigSignatureVO.builder()
+                .corpId(tokenManager.getCorpId())
+                .agentId(tokenManager.getAgentId())
+                .nonceStr(nonceStr)
+                .timestamp(timestamp)
+                .signature(signature)
+                .build();
     }
 }
 ```
 
-### 7.5 Data Security
+```java
+@RestController
+@RequestMapping("/api/wecom/jssdk")
+public class WecomJsdkController {
 
-- Sensitive data such as check-in photos stored on internal file systems, not publicly accessible
-- Sensitive fields like user phone numbers encrypted with AES-256
-- Regular database backups
-- Location data in check-in records should be masked for display (accurate to ~100m)
+    @Resource
+    private WecomJsapiService jsapiService;
 
-## VIII. Pitfall Guide
-
-### 8.1 access_token Concurrent Refresh
-
-**Problem**: Multiple instances refreshing access_token simultaneously causes old tokens to be invalidated, and other instances' requests fail.
-
-**Solution**: Use distributed locks to ensure only one instance refreshes while others wait. Double-check pattern: after acquiring the lock, check cache again to avoid redundant refresh. See the `WecomTokenManager` implementation in Chapter V for details.
-
-### 8.2 Mini Program code Can Only Be Used Once
-
-**Problem**: The `code` returned by `wx.qyLogin` can only be used once and is valid for 5 minutes. Reusing the same code to call `jscode2session` will result in an error.
-
-**Solution**:
-- Mini program side calls `wx.qyLogin` on every launch to get a new code
-- Backend exchanges code immediately upon receipt, does not cache it
-- After successful exchange, issues JWT; subsequent requests use JWT instead of code
-
-### 8.3 Missing requiredPrivateInfos Declaration
-
-**Problem**: Calling `wx.getLocation` fails with `getLocation is not a function` or a prompt to declare it in app.json.
-
-**Solution**: Declare the required privacy APIs in `app.json`:
-
-```json
-{
-  "requiredPrivateInfos": [
-    "getLocation",
-    "chooseLocation"
-  ]
+    /** After the front end enters a page, it exchanges the current URL for a signature */
+    @GetMapping("/config")
+    public Result<WxConfigSignatureVO> config(@RequestParam("url") String url) {
+        return Result.success(jsapiService.buildConfigSignature(url));
+    }
 }
 ```
 
-Also declare permission purpose description in the `permission` field, otherwise the review may be rejected.
+### 5.3 Front End: Signature Initialization (with Special Handling of the iOS Entry Page Problem)
 
-### 8.4 Location Accuracy and Anti-cheating
+The most classic JS-SDK pitfall: **Android signs with the current page URL, while iOS (WKWebView) signs with the URL of the entry page when first entering the app**. In an SPA, front-end route changes do not actually refresh the page; on iOS, if you sign with the "current route's href", then as long as it is not the first landing page, `wx.config` will inevitably report `invalid signature`.
 
-**Problem**: GPS location accuracy is about 10-50 meters with drift; some users may use virtual location software to cheat.
-
-**Solution**:
-- Set allowed radius to 100-300 meters; too strict will cause false positives
-- Mini program requests high-accuracy positioning (`isHighAccuracy: true`), and checks the `accuracy` field; if accuracy is worse than 100m, prompt the user to move to an open area
-- Backend performs anomaly detection: frequent make-up check-ins, non-workday check-ins, remote location check-ins, etc.
-- Photo check-in adds watermark (time + location + device fingerprint)
-- Scan check-in combined with location for dual verification
-- Detect simulated location: mini program can check via `wx.getLocation`'s `accuracy`; simulated location typically has accuracy of 0 or a fixed value
-
-### 8.5 Mini Program Server Domain Configuration
-
-**Problem**: Development environment backend address is `http://localhost:8080`, mini program requests fail with "not in the following request valid domain list".
-
-**Solution**:
-- Development phase: WeChat Developer Tools -> Details -> Local Settings -> Check "Do not verify valid domains, web-view (business domain), TLS version, and HTTPS certificate"
-- Trial and production versions: must configure server domains in the admin console; localhost and IP are not supported
-- request, uploadFile, downloadFile domains need to be configured separately
-- Maximum 50 domain configuration changes per month
-
-### 8.6 wx.chooseImage Deprecated
-
-**Problem**: Using `wx.chooseImage` returns abnormal results on some devices.
-
-**Solution**: Migrate to `wx.chooseMedia`, which supports selecting both images and videos and has a more stable API:
+The unified solution: **record the first URL on the entry page and use it for all subsequent signatures (iOS); Android always uses the current URL.**
 
 ```typescript
-// Old API (deprecated)
-wx.chooseImage({ ... });
+// src/app/wecom/jssdk.service.ts
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom, map } from 'rxjs';
+import wx from 'weixin-js-sdk';
+import { WecomEnvService } from './env.service';
 
-// New API (recommended)
-wx.chooseMedia({
-  count: 1,
-  mediaType: ['image'],
-  sourceType: ['camera'],
-  ...
-});
-```
+interface WxConfigSignature {
+  corpId: string; agentId: string; nonceStr: string;
+  timestamp: string; signature: string;
+}
 
-### 8.7 Mini Program Version Publishing and Rollback
+@Injectable({ providedIn: 'root' })
+export class WecomJssdkService {
+  private http = inject(HttpClient);
+  private env = inject(WecomEnvService);
+  private configPromise: Promise<void> | null = null;
 
-**Problem**: Mini programs require review submission before publishing. During review, the online version remains the old version, and if there's an urgent bug, it cannot be rolled back immediately.
+  /** Get the URL participating in the signature: strip the #hash part (WeCom signature rules exclude the hash from url) */
+  private signableUrl(href: string): string {
+    const idx = href.indexOf('#');
+    return idx >= 0 ? href.slice(0, idx) : href;
+  }
 
-**Solution**:
-- Mini programs support separate "trial version" and "production version"; development and testing happen in trial version
-- Thoroughly test in trial version before publishing production version
-- Utilize WeCom's grayscale publishing capability: release to a small range first, then full release
-- Backend APIs maintain backward compatibility to prevent old mini program versions from failing
-- In emergencies, you can "withdraw published version" in the admin console (limited number of times)
-
-### 8.8 H5 JS-SDK Signature URL iOS/Android Differences
-
-**Problem**: In H5 mode, JS-SDK signature URL is handled differently on iOS and Android:
-- Android: uses the current page URL
-- iOS: uses the entry page URL (the URL when first entering the application)
-
-**Solution**: On iOS, record the entry URL and use it for all subsequent signatures; on Android, use the current page URL. Mini program mode does not have this issue, which is a major advantage of choosing mini programs.
-
-### 8.9 WeCom API Rate Limits
-
-| API | Limit |
-|-----|------|
-| Get access_token | Max 1000 times per enterprise per 5 minutes |
-| Send message | Max 200 times per application per minute |
-| Address book read | Max 10000 times per day |
-| Get check-in data | Max 1000 times per day |
-| jscode2session | Max 600 times per application per minute |
-
-High-frequency calls require caching and batch processing.
-
-### 8.10 Mini Program Package Size Limit
-
-**Problem**: Mini program main package exceeding 2MB cannot be previewed/uploaded; total package exceeding 20MB cannot be published.
-
-**Solution**:
-- Put non-core pages like check-in record lists and make-up check-in applications into subpackages
-- Upload image resources to CDN, do not embed them in the code package
-- Use `wx.subPackages` configuration for subpackages
-
-```json
-{
-  "subPackages": [
-    {
-      "root": "pages/records",
-      "pages": ["index"]
-    },
-    {
-      "root": "pages/apply",
-      "pages": ["index"]
+  /** Record the entry page URL (only needed on iOS; must be called once at app startup, before route navigation) */
+  private entryUrl(): string {
+    const key = 'wx_ios_entry_url';
+    if (this.env.isIOS()) {
+      let url = sessionStorage.getItem(key);
+      if (!url) {
+        url = this.signableUrl(location.href);
+        sessionStorage.setItem(key, url);
+      }
+      return url;
     }
-  ]
+    return this.signableUrl(location.href);   // Android uses the current page
+  }
+
+  /** Ensure wx.config completes (only once globally; reusable within the SPA) */
+  ensureWxConfig(): Promise<void> {
+    if (this.configPromise) return this.configPromise;
+
+    this.configPromise = (async () => {
+      const url = this.entryUrl();
+      const cfg = await firstValueFrom(
+        this.http.get<{ code: number; data: WxConfigSignature }>(
+          '/api/wecom/jssdk/config', { params: { url } },
+        ).pipe(map((r) => r.data)),
+      );
+
+      await new Promise<void>((resolve, reject) => {
+        wx.config({
+          beta: true,                 // Required! WeCom-specific APIs need beta:true
+          debug: false,
+          appId: cfg.corpId,
+          agentId: cfg.agentId,
+          timeStamp: cfg.timestamp,
+          nonceStr: cfg.nonceStr,
+          signature: cfg.signature,
+          jsApiList: ['getLocation', 'chooseImage', 'scanQRCode'],
+        });
+        wx.ready(() => resolve());
+        wx.error((res: any) => reject(new Error('wx.config failed: ' + res.errMsg)));
+      });
+    })();
+
+    return this.configPromise;
+  }
 }
 ```
 
-## IX. Project Setup Supplement
+Record the iOS entry URL as early as possible at app startup (before the first route navigation); you can use `APP_INITIALIZER`:
 
-### 9.1 Backend Project Structure
+```typescript
+// Register startup initialization in src/app/app.config.ts
+import { APP_INITIALIZER } from '@angular/core';
 
-```
-attendance-backend/
-├── pom.xml
-├── src/main/java/com/company/attendance/
-│   ├── AttendanceApplication.java
-│   ├── config/
-│   │   ├── WebMvcConfig.java          # Web configuration (interceptor registration, CORS)
-│   │   ├── WecomConfig.java           # WeCom configuration class
-│   │   ├── RestTemplateConfig.java     # RestTemplate configuration
-│   │   └── RedisConfig.java           # Redis configuration
-│   ├── controller/
-│   │   ├── QyAuthController.java       # Authentication (mini program login)
-│   │   ├── CheckinController.java      # Attendance check-in
-│   │   ├── CheckinPhotoController.java # Photo check-in
-│   │   ├── ScanCheckinController.java  # Scan check-in
-│   │   └── WecomCallbackController.java # WeCom callbacks
-│   ├── service/
-│   │   ├── QyAuthService.java
-│   │   ├── CheckinService.java
-│   │   ├── WecomTokenManager.java
-│   │   └── WecomMessageService.java
-│   ├── interceptor/
-│   │   └── JwtAuthInterceptor.java
-│   ├── entity/
-│   ├── dto/
-│   ├── vo/
-│   ├── mapper/
-│   └── common/
-│       ├── Result.java
-│       ├── ErrorCode.java
-│       ├── BusinessException.java
-│       └── GlobalExceptionHandler.java
-└── src/main/resources/
-    ├── application.yml
-    ├── application-dev.yml
-    ├── application-prod.yml
-    └── db/
-        └── changelogs/
-            └── 001-create-checkin-table.xml
+function recordWxEntryUrl() {
+  const jssdk = inject(WecomJssdkService);
+  const env = inject(WecomEnvService);
+  return () => {
+    // Invoke the entry-recording logic of ensureWxConfig once (on iOS this fixes the landing page URL before the first navigation)
+    if (env.isInWecom()) {
+      // Warm up wx.config; it may also be non-blocking — when geolocation/scanning is actually invoked, the service still falls back internally
+      jssdk.ensureWxConfig().catch(() => void 0);
+    }
+  };
+}
+
+// Add to providers:
+// { provide: APP_INITIALIZER, useFactory: recordWxEntryUrl, multi: true }
 ```
 
-### 9.2 Core Configuration File
+> The key point is that on iOS the entry URL must be read from `location.href` and fixed before any front-end route navigation happens. Placing it in `APP_INITIALIZER` (executed before Angular routing starts) is the most reliable; even if you don't warm up the signature, you must at least write the entry URL to sessionStorage in that hook.
+
+> Routing mode recommendation: to reduce the mental burden of hashes and signatures, the mobile H5 can use **history mode**; if you use hash mode, be sure to truncate at `#` per `signableUrl` above, ensuring the URLs participating in signatures on front and back ends are exactly identical, and that both sides use `encodeURIComponent` or neither encodes — stay consistent.
+
+### 5.4 Geolocation Check-in
+
+```typescript
+// src/app/wecom/device.service.ts
+import { Injectable, inject } from '@angular/core';
+import wx from 'weixin-js-sdk';
+import { WecomJssdkService } from './jssdk.service';
+
+export interface LngLat { longitude: number; latitude: number; accuracy: number; }
+
+@Injectable({ providedIn: 'root' })
+export class WecomDeviceService {
+  private jssdk = inject(WecomJssdkService);
+
+  /** JS-SDK geolocation (gcj02 Mars coordinates, consistent with maps in mainland China) */
+  getLocation(): Promise<LngLat> {
+    return this.jssdk.ensureWxConfig().then(() => new Promise((resolve, reject) => {
+      wx.getLocation({
+        type: 'gcj02',
+        success: (res: any) => resolve({
+          longitude: res.longitude,
+          latitude: res.latitude,
+          accuracy: res.accuracy,
+        }),
+        fail: (err: any) => reject(new Error('Geolocation failed, please check location permissions: ' + err.errMsg)),
+      });
+    }));
+  }
+
+  /** Invoke the camera to take a photo (camera only, no album, to prevent cheating); returns localId */
+  takePhoto(): Promise<string> {
+    return this.jssdk.ensureWxConfig().then(() => new Promise((resolve, reject) => {
+      wx.chooseImage({
+        count: 1,
+        sourceType: ['camera'],
+        sizeType: ['compressed'],
+        success: (res: any) => resolve(res.localIds[0]),
+        fail: (err: any) => reject(new Error('Taking photo failed: ' + err.errMsg)),
+      });
+    }));
+  }
+
+  /** Scan QR code (workstation/meeting-room QR check-in) */
+  scanQRCode(): Promise<string> {
+    return this.jssdk.ensureWxConfig().then(() => new Promise((resolve, reject) => {
+      wx.scanQRCode({
+        needResult: 1,              // 1 = the front end receives the result and handles it itself
+        scanType: ['qrCode'],
+        success: (res: any) => resolve(res.resultStr),
+        fail: (err: any) => reject(new Error('Scanning failed: ' + err.errMsg)),
+      });
+    }));
+  }
+}
+
+/** Haversine distance (meters); a pure function that can live in shared utils */
+export function distanceMeters(a: LngLat, b: { lat: number; lng: number }): number {
+  const R = 6371000;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.latitude);
+  const dLng = rad(b.lng - a.longitude);
+  const h = Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a.latitude)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+```
+
+The check-in component invokes it (`checkin.component.ts`); use the team's existing UI library for prompts (such as NG-ZORRO's `NzMessageService`):
+
+```typescript
+// src/app/mobile/pages/checkin/checkin.component.ts (excerpt)
+import { Component, inject } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+import { NzMessageService } from 'ng-zorro-antd/message';
+import { WecomDeviceService, distanceMeters } from '../../../wecom/device.service';
+import { CheckinService } from '../../../core/services/checkin.service';
+
+@Component({ selector: 'app-checkin', standalone: true, template: '...' })
+export class CheckinComponent {
+  private device = inject(WecomDeviceService);
+  private checkinApi = inject(CheckinService);
+  private msg = inject(NzMessageService);
+
+  private readonly COMPANY = { lat: 30.2741, lng: 120.1551, radius: 200 };
+
+  async onCheckin(): Promise<void> {
+    const loc = await this.device.getLocation();
+    const dist = distanceMeters(loc, this.COMPANY);
+    if (dist > this.COMPANY.radius) {
+      this.msg.error(`Outside check-in range, ${Math.round(dist)} meters from the company`);
+      return;
+    }
+    await firstValueFrom(this.checkinApi.submit({
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      accuracy: loc.accuracy,
+      distance: Math.round(dist),
+    }));
+    this.msg.success('Check-in successful');
+  }
+}
+```
+
+The back-end check-in API is identical to the system's existing implementation (secondary distance verification, duplicate-check-in prevention, persistence, push); this logic already exists, and H5 is just a new caller. The back end **must re-verify the distance** and cannot trust the latitude/longitude sent from the front end (front-end coordinates can be tampered with via packet capture).
+
+### 5.5 Photo Check-in and QR Check-in
+
+Camera and scanning are already wrapped in the `WecomDeviceService` in 5.4 (`takePhoto()` returns a localId, `scanQRCode()` returns the QR content); the component can simply await them. The localId image obtained from `takePhoto` then needs to be uploaded:
+
+- `wx.uploadImage` first uploads the image to WeCom to obtain a `serverId`, and the back end then calls WeCom's media API `media/get` to pull it into the intranet — suitable for scenarios where you don't want to upload files directly from H5;
+- Or draw the localId onto a canvas to convert it to a Blob, and POST it directly to the existing file service with Angular's `FormData` + `HttpClient`, reusing the system's existing attachment storage.
+
+With either approach the back end keeps the existing photo storage and watermark (time + location + device info) logic. For QR check-in, the back end verifies the QR token's validity and expiry and layers on geolocation double verification, likewise reusing existing APIs.
+## 6. Implementing Complex Activiti Approval Workflows on the WeCom Side
+
+Attendance-related approvals (make-up check-in, leave, field work, overtime appeals, etc.) are already defined and working in Activiti; the WeCom side does not need to reimplement the workflow. It only needs to do three things: **bring the to-dos out, connect the approval actions in, and actively push to-dos to WeCom**. This chapter uses three typical nodes — countersign, or-sign, and organization-chart-based approval — to explain how to reuse them.
+
+### 6.1 First Unify the Assignee Identifier
+
+Activiti uses a string to identify a task assignee (`ACT_RU_TASK.ASSIGNEE_`) or candidate users/groups (`ACT_RU_IDENTITYLINK`). Make sure: **the assignee identifiers hard-coded in the process definition or computed at runtime are identical to `sys_user.username` (the internal account, i.e. the unique key bound to wecom_user_id)**.
+
+We recommend uniformly using the employee ID/username (such as `zhangsan`) as the system-wide unique person identifier:
+
+- Activiti assignee / candidateUser = `sys_user.username`
+- WeCom mapping = `sys_user.wecom_user_id` (at many companies this is also the employee ID; the two may be the same, but they are logically separate)
+- When pushing WeCom messages: `username → look up sys_user → get wecom_user_id` as `touser`
+
+This way Activiti's process definitions, UEL expressions, and candidate queries need no changes whatsoever for WeCom.
+
+### 6.2 Expressing the Three Typical Nodes in Process Definitions
+
+Take the "make-up check-in application" process as an example to demonstrate countersign, or-sign, and organization-chart-based approval in BPMN.
+
+**Countersign (passes only when all agree)** — use a multi-instance node (multiInstanceLoopCharacteristics) + completion condition:
+
+```xml
+<userTask id="countersignLeaderHr" name="Direct leader and HR countersign">
+  <documentation>Everyone approves; it passes only if all agree; any rejection ends it</documentation>
+  <multiInstanceLoopCharacteristics isSequential="false"
+                                   activiti:collection="${countersignUsers}"
+                                   activiti:elementVariable="approver">
+    <completionCondition>${approveResultList.size() == nrOfInstances
+        &amp;&amp; !approveResultList.contains('REJECT')}</completionCondition>
+  </multiInstanceLoopCharacteristics>
+  <userTask><extensionElements/></userTask>
+</userTask>
+```
+
+- `isSequential="false"`: parallel countersign, generating one task for each person simultaneously
+- `nrOfInstances`: total countersign headcount; `approveResultList`: a process variable collecting each person's approval conclusion
+- Completion condition: proceed only when everyone has handled it and there is no REJECT
+
+**Or-sign (any one of multiple people can handle it)** — also multi-instance, but with the completion condition changed to "end as soon as 1 is handled"; a more common approach is candidate users (candidateUsers), where one task is visible to multiple people and whoever claims it handles it:
+
+```xml
+<userTask id="orSignDuty" name="Duty group or-sign" activiti:candidateUsers="${dutyGroupUsers}">
+  <documentation>Any member of the candidate group may claim and approve</documentation>
+</userTask>
+```
+
+Or use multi-instance + `nrOfCompletedInstances >= 1` to give each person a to-do and automatically cancel the rest once one person handles it.
+
+**Dynamic organization-chart-based approval** — the assignee is not hard-coded but computed in real time from the org chart by a process expression (applicant → direct department head → division leader):
+
+```xml
+<userTask id="deptLeaderApprove" name="Department head approval"
+          activiti:assignee="${orgService.findLeader(applyUserId)}"/>
+<userTask id="directorApprove" name="Division leader approval"
+          activiti:assignee="${orgService.findDirector(applyUserId)}"/>
+```
+
+`orgService` is a Spring Bean registered into Activiti's expression context; internally it walks up the department tree to find leaders. After a department head transfers positions, new process instances are automatically routed according to the latest org chart, with no need to change the process definition.
+
+> This BPMN already runs on the PC side. The WeCom side merely adds a "handling entry"; underneath, the handling action still calls the same `taskService.complete()`, so countersign counting, or-sign claiming, organization routing, and gateway conditions are all guaranteed consistent by the engine — there is no problem of "the process on PC differing from the process on mobile".
+
+### 6.3 WeCom-Side To-Do List and Detail
+
+**To-do list** — directly use Activiti's TaskQuery to query the current logged-in user's to-dos by username (with countersign, each person has their own task; or-sign candidate tasks are queried with taskCandidateUser):
+
+```java
+/**
+ * Mobile approval Service (reuses Activiti TaskService)
+ *
+ * @author cuckoom
+ */
+@Service
+public class MobileApprovalService {
+
+    @Resource
+    private TaskService taskService;
+    @Resource
+    private HistoryService historyService;
+    @Resource
+    private RepositoryService repositoryService;
+
+    /** Current user's to-dos (including directly assigned + or-sign candidate, unclaimed) */
+    public List<TodoVO> listMyTodo(String username) {
+        List<Task> owned = taskService.createTaskQuery()
+                .taskAssignee(username)
+                .active()
+                .orderByTaskCreateTime().desc()
+                .list();
+
+        List<Task> candidate = taskService.createTaskQuery()
+                .taskCandidateUser(username)
+                .active()
+                .list();
+
+        return Stream.concat(owned.stream(), candidate.stream())
+                .distinct()
+                .map(this::toTodoVO)
+                .collect(Collectors.toList());
+    }
+
+    private TodoVO toTodoVO(Task task) {
+        Map<String, Object> vars = taskService.getVariables(task.getId());
+        BpmnModel model = repositoryService.getBpmnModel(task.getProcessDefinitionId());
+        String nodeType = readNodeType(model, task.getTaskDefinitionKey()); // COUNTERSIGN/ORSIGN/NORMAL
+
+        return TodoVO.builder()
+                .taskId(task.getId())
+                .processInstanceId(task.getProcessInstanceId())
+                .title(String.valueOf(vars.getOrDefault("title", task.getName())))
+                .nodeName(task.getName())
+                .nodeType(nodeType)
+                .applyUserName(String.valueOf(vars.get("applyUserName")))
+                .createTime(task.getCreateTime())
+                .candidate(Objects.isNull(task.getAssignee()))  // Or-sign, unclaimed
+                .build();
+    }
+}
+```
+
+**Approval detail** — display the form, countersign progress (who has agreed, who is pending), and the approval-comment timeline:
+
+```java
+/** Countersign progress: aggregate each assignee's status from historic tasks + current tasks */
+public List<ApproverProgressVO> countersignProgress(String processInstanceId) {
+    List<HistoricTaskInstance> done = historyService.createHistoricTaskInstanceQuery()
+            .processInstanceId(processInstanceId)
+            .finished()
+            .list();
+    List<Task> pending = taskService.createTaskQuery()
+            .processInstanceId(processInstanceId)
+            .list();
+    // Merge: done carries approval comments (COMMENT), pending is marked "pending approval"
+    // Assembly omitted; returns [{user, userName, status: APPROVED/REJECTED/PENDING, comment, time}]
+    return mergeProgress(done, pending);
+}
+```
+
+The front-end `ApprovalDetailComponent` renders according to `nodeType`: countersign shows a multi-avatar progress bar (handled/pending), or-sign shows "any duty-group member may approve; tap to claim and handle".
+
+### 6.4 Claiming (Or-Sign) and Approval Actions
+
+An or-sign candidate task must first be claimed to become the assignee before it can be handled; countersign tasks are directly assigned and skip claiming.
+
+```java
+@Transactional(rollbackFor = Exception.class)
+public void approve(String taskId, String username, boolean agree, String comment) {
+    Task task = taskService.createTaskQuery().taskId(taskId).active().singleResult();
+    if (task == null) {
+        throw new BusinessException(ErrorCode.TASK_NOT_FOUND, "The to-do does not exist or has already been handled");
+    }
+
+    // Or-sign: claim the candidate task first
+    if (task.getAssignee() == null) {
+        boolean isCandidate = taskService.createTaskQuery()
+                .taskId(taskId).taskCandidateUser(username).count() > 0;
+        if (!isCandidate) {
+            throw new BusinessException(ErrorCode.NO_PERMISSION, "You have no permission to handle this task");
+        }
+        taskService.claim(taskId, username);
+    } else if (!username.equals(task.getAssignee())) {
+        throw new BusinessException(ErrorCode.NO_PERMISSION, "This task does not belong to you");
+    }
+
+    // Record the approval comment
+    Authentication.setAuthenticatedUserId(username);
+    taskService.addComment(taskId, task.getProcessInstanceId(),
+            (agree ? "Approve: " : "Reject: ") + comment);
+
+    // Write process variables: the countersign completion condition depends on approveResultList
+    Map<String, Object> vars = new HashMap<>();
+    if (isCountersign(task)) {
+        @SuppressWarnings("unchecked")
+        List<String> results = (List<String>) taskService.getVariable(taskId, "approveResultList");
+        if (results == null) results = new ArrayList<>();
+        results.add(agree ? "APPROVE" : "REJECT");
+        vars.put("approveResultList", results);
+    }
+    vars.put("approved", agree);
+
+    taskService.complete(taskId, vars);
+
+    // Post-approval handling: push the next node's to-do; interact with attendance when the process ends (see 6.5, 6.6)
+    afterTaskComplete(task.getProcessInstanceId(), agree);
+}
+```
+
+Rejection strategies can be chosen according to enterprise rules: reject back to the initiator (resubmit), reject to the previous node, or end the process directly. The make-up check-in scenario commonly uses "any rejection terminates + notifies the initiator", which is exactly the semantics of `!contains('REJECT')` in the countersign completion condition.
+
+### 6.5 Interaction Between Approval and Attendance Data (Reusing Existing Capabilities)
+
+When the process ends, attendance is written back according to business type. This logic already exists in the system, and WeCom-side approval triggers the same `taskService.complete()`, so the interaction naturally takes effect. Typical make-up check-in handling:
+
+```java
+public void afterProcessFinished(String processInstanceId) {
+    // After the process ends, process-instance variables have moved into history tables; fetch business variables from HistoricVariableInstance
+    Map<String, Object> vars = historyService.createHistoricVariableInstanceQuery()
+            .processInstanceId(processInstanceId)
+            .list()
+            .stream()
+            .collect(Collectors.toMap(HistoricVariableInstance::getVariableName,
+                    HistoricVariableInstance::getValue, (a, b) -> a));
+    String bizType = String.valueOf(vars.get("bizType"));     // MAKEUP / LEAVE / OVERTIME
+    Boolean approved = (Boolean) vars.get("approved");
+
+    if (!Boolean.TRUE.equals(approved)) {
+        notifyApplicant(processInstanceId, false);   // Rejection notification
+        return;
+    }
+
+    switch (bizType) {
+        case "MAKEUP":
+            // Make-up check-in approved: correct/supplement the check-in record for the corresponding date (existing attendance Service)
+            attendanceService.applyMakeupCard(
+                (Long) vars.get("recordId"),
+                (String) vars.get("makeupTime"),
+                String.valueOf(vars.get("reason")));
+            break;
+        case "LEAVE":
+            // Leave approved: record leave, deduct leave balance
+            leaveService.grantLeave(vars);
+            break;
+        default:
+            break;
+    }
+    notifyApplicant(processInstanceId, true);
+}
+```
+
+Triggering via an Activiti process-completed event listener is more robust than manually calling it in every approval endpoint (completion from any entry — PC, WeCom, scheduled tasks — will reach it):
+
+```java
+import org.activiti.engine.delegate.event.ActivitiEntityEvent;
+import org.activiti.engine.delegate.event.ActivitiEvent;
+import org.activiti.engine.delegate.event.ActivitiEventListener;
+import org.activiti.engine.delegate.event.ActivitiEventType;
+
+/**
+ * Activiti process-completion listener: interacts with attendance after the approval finally ends
+ * Registered via RuntimeService.addEventListener(...) or ProcessEngineConfiguration
+ */
+@Component
+public class ApprovalProcessListener implements ActivitiEventListener {
+
+    @Resource
+    private ApprovalFlowService approvalFlowService;
+
+    @Override
+    public void onEvent(ActivitiEvent event) {
+        if (event.getType() == ActivitiEventType.PROCESS_COMPLETED) {
+            approvalFlowService.afterProcessFinished(event.getProcessInstanceId());
+        }
+    }
+
+    @Override
+    public boolean isFailOnException() {
+        return false;   // Listener exceptions do not affect the process itself
+    }
+}
+```
+
+### 6.6 Actively Pushing To-Dos to WeCom
+
+An H5 to-do list alone is not enough — employees will not proactively go in and refresh it. When process flow produces a new to-do, the back end should actively push an "approval card" to the next handler's WeCom; tapping the card opens the corresponding H5 approval detail page directly, and thanks to the Chapter 4 silent login, it opens already logged in.
+
+Trigger the push in a task-creation listener (Activiti event listener):
+
+```java
+import org.activiti.engine.delegate.event.ActivitiEntityEvent;
+import org.activiti.engine.delegate.event.ActivitiEventListener;
+import org.activiti.engine.delegate.event.ActivitiEventType;
+import org.activiti.engine.impl.persistence.entity.TaskEntity;
+import org.activiti.engine.task.IdentityLink;
+
+@Component
+public class WecomTodoPushListener implements ActivitiEventListener {
+
+    @Resource private WecomMessageService wecomMessageService;
+    @Resource private SysUserMapper userMapper;
+    @Resource private TaskService taskService;
+
+    @Override
+    public void onEvent(org.activiti.engine.delegate.event.ActivitiEvent event) {
+        if (event.getType() != ActivitiEventType.TASK_CREATED) return;
+        TaskEntity task = (TaskEntity) ((ActivitiEntityEvent) event).getEntity();
+
+        // Directly assigned (countersign: one task per person) → push to the assignee
+        if (StrUtil.isNotBlank(task.getAssignee())) {
+            pushToUser(task, task.getAssignee());
+        } else {
+            // Or-sign candidate task → push to all candidate users / members expanded from candidate groups; first to enter claims first
+            for (IdentityLink link : taskService.getIdentityLinksForTask(task.getId())) {
+                if (StrUtil.isNotBlank(link.getUserId())) {
+                    pushToUser(task, link.getUserId());
+                } else if (StrUtil.isNotBlank(link.getGroupId())) {
+                    // Candidate group: look up member usernames by group and push one by one (implementation omitted)
+                    userMapper.findUsernamesByGroup(link.getGroupId())
+                            .forEach(username -> pushToUser(task, username));
+                }
+            }
+        }
+    }
+
+    private void pushToUser(TaskEntity task, String username) {
+        SysUser u = userMapper.findByUsername(username);
+        if (u == null || StrUtil.isBlank(u.getWecomUserId())) {
+            log.warn("User {} has not bound WeCom; skipping to-do push", username);
+            return;
+        }
+        wecomMessageService.sendApprovalTodoCard(u.getWecomUserId(), task);
+    }
+
+    @Override
+    public boolean isFailOnException() {
+        return false;   // Push failure should not roll back Activiti's task creation
+    }
+}
+```
+
+Text card message (tap to jump directly to the H5 approval page):
+
+```json
+{
+  "touser": "wangwu",
+  "msgtype": "textcard",
+  "agentid": 1000002,
+  "textcard": {
+    "title": "Pending approval: Li Si's make-up check-in application",
+    "description": "Node: Direct leader approval<br/>Make-up date: 2026-09-08 morning<br/>Reason: Forgot to check in at the customer site during field work",
+    "url": "https://attendance.yourcompany.com/mobile/approval/123456",
+    "btntxt": "Approve Now"
+  }
+}
+```
+
+Key point: **the card URL points directly to the approval detail page**. The employee taps it → no token → Chapter 4 OAuth silent login → after callback returns to this approval detail via the redirect path carried in `state` (see redirectPath in 4.3). To achieve this, you only need to make the message card link carry WeCom's conventional silent-login parameters, or have the front-end guard enforce login for all `/mobile/**`; no special handling is needed.
+
+**Template card button callbacks (advanced: approve/reject directly without opening a page)**
+
+If you want approvers to tap "Approve/Reject" directly in the message notification, use `template_card` (button_interaction) + the callback receiving from Chapter 6; after the back end receives the button event it directly calls `mobileApprovalService.approve()` and then updates the card state. This approach suits nodes where the approval action is extremely simple (one-tap approve); for cases involving filling in comments or viewing countersign details, jumping to H5 is still recommended. The two approaches call the exact same approval method underneath.
+
+### 6.7 Organization-Chart Synchronization: Ensuring Dynamic Approvers Can Be Reached by Push
+
+The assignee dynamically computed by "organization-chart-based approval" is a username; at push time you must be able to look up their wecom_user_id. There are two ways to guarantee this:
+
+1. **Incremental contacts callback sync** (recommended, real-time): subscribe to `change_contact` events (member created/updated/deleted, department changes) and update `sys_user`'s wecom_user_id and department membership in real time.
+2. **Scheduled full sync**: once every night in the early morning, call the contacts department/member APIs for a full alignment as a fallback.
+
+```
+GET /cgi-bin/department/list?id=0            # Department tree
+GET /cgi-bin/user/list?department_id=1&fetch_child=1   # Department member details
+```
+
+During sync, align by employee ID (username), backfill the WeCom userid into `sys_user.wecom_user_id`, and sync department relationships for use by `orgService.findLeader()` organization routing and push addressing. The contacts read APIs have a daily call limit (see 9.4), so be sure to use "incremental callbacks as primary + one daily full sync as fallback" rather than high-frequency polling.
+## 7. Message Push and Event Callbacks
+
+### 7.1 access_token and Sending Messages
+
+Application messages are uniformly sent by the server side; the API is:
+
+```
+POST https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=TOKEN
+```
+
+Common message types:
+
+- `text`: plain text such as attendance reminders
+- `textcard`: title + description + button, tap to jump to H5 (first choice for approval to-dos)
+- `template_card`: with interactive buttons, operable directly within the notification (paired with callbacks)
+- `markdown`: rich text such as approval summaries (supported inside WeCom)
+
+Push service wrapper (`duplicate_check_interval` is used to prevent duplicate pushes in a short period):
+
+```java
+@Service
+@Slf4j
+public class WecomMessageService {
+
+    @Resource private WecomTokenManager tokenManager;
+    @Resource private RestTemplate restTemplate;
+    @Value("${wecom.agentid}") private Integer agentId;
+
+    /** Send an approval to-do card; tapping jumps to the H5 approval detail */
+    public void sendApprovalTodoCard(String wecomUserId, Task task) {
+        Map<String, Object> card = new HashMap<>();
+        card.put("title", "Pending approval: " + task.getName());
+        card.put("description", "A new approval to-do is waiting for you to handle");
+        card.put("btntxt", "Approve Now");
+        card.put("url", "https://attendance.yourcompany.com/mobile/approval/" + task.getId());
+
+        Map<String, Object> msg = new HashMap<>();
+        msg.put("touser", wecomUserId);
+        msg.put("msgtype", "textcard");
+        msg.put("agentid", agentId);
+        msg.put("textcard", card);
+        msg.put("duplicate_check_interval", 1800);
+
+        send(msg);
+    }
+
+    public void send(String msg) { /* post message/send, log invaliduser/errcode */ }
+}
+```
+
+> The `invaliduser`/`invalidparty` in the response body must be logged: it means someone in the push target is not bound or not within the visible scope, and is the first clue when troubleshooting "why someone isn't receiving to-do notifications".
+
+### 7.2 Callback Signature Verification and Encryption/Decryption
+
+After configuring "Receive Messages", WeCom sends two kinds of requests to the callback URL:
+
+- **GET**: URL validity verification when saving the configuration; you must decrypt `echostr` and return it as-is
+- **POST**: formal event pushes (template card buttons, contacts changes), ciphertext XML, requiring signature verification + AES decryption
+
+```java
+@RestController
+@RequestMapping("/api/wecom/callback")
+@Slf4j
+public class WecomCallbackController {
+
+    @Resource private WecomCallbackService callbackService;
+
+    /** URL verification */
+    @GetMapping("/message")
+    public String verify(@RequestParam("msg_signature") String signature,
+                         @RequestParam String timestamp,
+                         @RequestParam String nonce,
+                         @RequestParam String echostr) {
+        try {
+            return callbackService.verifyUrl(signature, timestamp, nonce, echostr);
+        } catch (Exception e) {
+            log.error("WeCom callback URL verification failed", e);
+            return "";
+        }
+    }
+
+    /** Event receiving: be sure to return success quickly; put time-consuming handling async to avoid WeCom retries */
+    @PostMapping(value = "/message", produces = "application/xml")
+    public String receive(@RequestParam("msg_signature") String signature,
+                          @RequestParam String timestamp,
+                          @RequestParam String nonce,
+                          @RequestBody String encryptedBody) {
+        try {
+            callbackService.handleAsync(signature, timestamp, nonce, encryptedBody);
+        } catch (Exception e) {
+            log.error("WeCom callback handling failed", e);
+        }
+        return "success";   // Return success first regardless of business success/failure, to prevent WeCom retrying with exponential backoff
+    }
+}
+```
+
+Do not implement encryption/decryption yourself; directly use the official `aes-256` sample code package (WeCom officially provides the Java version `WXBizMsgCrypt`), which wraps: SHA1 signature verification, AES-256-CBC decryption, corpId verification, and XML assembly. The three parameters `Token`, `EncodingAESKey`, and `corpid` come from the backend callback configuration.
+
+### 7.3 Handling Template Card Buttons and Contacts Events
+
+```java
+@Service
+@Slf4j
+public class WecomCallbackService {
+
+    @Resource private MobileApprovalService approvalService;
+    @Resource private ContactSyncService contactSyncService;
+    @Resource private WXBizMsgCrypt crypt;   // Official encryption/decryption class
+
+    /** After decryption, dispatch by event type */
+    public void handle(String sig, String ts, String nonce, String body) throws Exception {
+        String xml = crypt.DecryptMsg(sig, ts, nonce, body);
+        // Parse XML with XStream/Digester, extract Event / ChangeType / TaskId / EventKey / FromUserName
+        CallbackEvent event = CallbackEvent.parse(xml);
+
+        switch (event.getEvent()) {
+            case "template_card_event":
+                // Template card button: EventKey is the button key, FromUserName is the clicking user's userid
+                onCardButton(event);
+                break;
+            case "change_contact":
+                contactSyncService.handleChange(event.getChangeType(), event.getUserId());
+                break;
+            default:
+                log.info("Unhandled WeCom event: {}", xml);
+        }
+    }
+
+    private void onCardButton(CallbackEvent e) {
+        boolean agree = "approve".equals(e.getEventKey());
+        String username = contactSyncService.wecomUserIdToUsername(e.getFromUserName());
+        // task_id was generated by us when sending the card and associated with the Activiti taskId; retrieve it from Redis/DB
+        String taskId = taskCardMapping.get(e.getTaskId());
+        approvalService.approve(taskId, username, agree, agree ? "Approve" : "Reject");
+        // You can call update_template_card to update the original card to "Approved/Rejected" to avoid repeated taps
+    }
+}
+```
+
+Event handling must be **idempotent**: WeCom may re-push the same event on timeout, and `approve` internally checks for "task already ended/already handled" (6.4 queries for active tasks), so duplicate pushes do not produce a second approval. Put time-consuming operations (such as sending multiple messages or writing multiple tables) on an async thread or message queue to ensure the callback returns `success` within seconds.
+
+## 8. Server-Side Infrastructure
+
+### 8.1 Centralized Management of access_token / jsapi_ticket
+
+Both tickets are valid for 7200 seconds and are unique per enterprise per app (re-obtaining invalidates the old one), so they must be centrally cached on the server. With multi-instance deployment, use a distributed lock to ensure only one instance refreshes:
+
+```java
+@Component
+@Slf4j
+public class WecomTokenManager {
+
+    private static final String TOKEN_KEY = "wecom:access_token";
+    private static final String LOCK_KEY  = "wecom:access_token:lock";
+    private static final long EXPIRE_SECONDS = 7100;   // Leave a 100s margin before 7200
+
+    @Value("${wecom.corpid}") private String corpId;
+    @Value("${wecom.secret}") private String secret;
+    @Resource private StringRedisTemplate redis;
+    @Resource private RestTemplate restTemplate;
+
+    public String getAccessToken() {
+        String cached = redis.opsForValue().get(TOKEN_KEY);
+        if (StrUtil.isNotBlank(cached)) return cached;
+
+        Boolean locked = redis.opsForValue().setIfAbsent(LOCK_KEY, "1", 10, TimeUnit.SECONDS);
+        if (Boolean.FALSE.equals(locked)) return waitForToken();   // Wait for another instance to refresh
+
+        try {
+            String again = redis.opsForValue().get(TOKEN_KEY);      // Double-check
+            if (StrUtil.isNotBlank(again)) return again;
+            return refresh();
+        } finally {
+            redis.delete(LOCK_KEY);
+        }
+    }
+
+    private String refresh() {
+        String url = String.format(
+            "https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=%s&corpsecret=%s", corpId, secret);
+        JSONObject resp = restTemplate.getForObject(url, JSONObject.class);
+        if (resp == null || resp.getIntValue("errcode") != 0) {
+            throw new BusinessException(ErrorCode.WECOM_API_ERROR, "Failed to obtain access_token");
+        }
+        String token = resp.getString("access_token");
+        redis.opsForValue().set(TOKEN_KEY, token, EXPIRE_SECONDS, TimeUnit.SECONDS);
+        return token;
+    }
+
+    private String waitForToken() {
+        for (int i = 0; i < 10; i++) {
+            sleep(200);
+            String t = redis.opsForValue().get(TOKEN_KEY);
+            if (StrUtil.isNotBlank(t)) return t;
+        }
+        throw new BusinessException(ErrorCode.WECOM_API_ERROR, "Timed out obtaining access_token");
+    }
+
+    public String getCorpId() { return corpId; }
+}
+```
+
+`jsapi_ticket` and the agent_config ticket can be cached independently using exactly the same pattern (with separate cache keys).
+
+### 8.2 Separating Sensitive Configuration
+
+corpid/agentid can be public, but the secret, callback Token, and EncodingAESKey must be injected via environment variables or a configuration center, never entering Git:
 
 ```yaml
-# application.yml
-server:
-  port: 8080
-  servlet:
-    context-path: /
-
-spring:
-  application:
-    name: attendance-backend
-  datasource:
-    url: jdbc:postgresql://localhost:5432/attendance
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
-    driver-class-name: org.postgresql.Driver
-  jackson:
-    date-format: yyyy-MM-dd HH:mm:ss
-    time-zone: Asia/Shanghai
-  liquibase:
-    enabled: true
-    change-log: classpath:db/changelog-master.xml
-
-# WeCom configuration
+# application-prod.yml
 wecom:
   corpid: ${WECOM_CORPID}
   agentid: ${WECOM_AGENTID}
   secret: ${WECOM_SECRET}
+  oauth:
+    redirect: https://attendance.yourcompany.com/mobile/oauth/callback
+  jssdk:
+    # The front-end domain participating in signatures, used for back-end verification/link generation
+    frontend-base: https://attendance.yourcompany.com
   callback:
     token: ${WECOM_CALLBACK_TOKEN}
     encoding-aes-key: ${WECOM_CALLBACK_AES_KEY}
-
-# Attendance configuration
-attendance:
-  company:
-    latitude: 30.2741
-    longitude: 120.1551
-  allowed-radius: 200
-
-# JWT configuration
-jwt:
-  secret: ${JWT_SECRET}
-  expiration: 604800  # 7 days (seconds)
-
-mybatis-plus:
-  mapper-locations: classpath*:/mapper/**/*.xml
-  type-aliases-package: com.company.attendance.entity
-  configuration:
-    map-underscore-to-camel-case: true
 ```
 
-### 9.3 Database Table Design
+### 8.3 API Security
 
-```sql
--- Check-in record table
-CREATE TABLE checkin_record (
-    id              BIGSERIAL PRIMARY KEY,
-    user_id         BIGINT       NOT NULL,
-    checkin_type    VARCHAR(20)  NOT NULL,  -- CLOCK_IN / CLOCK_OUT / SCAN / PHOTO
-    latitude        DOUBLE PRECISION,
-    longitude       DOUBLE PRECISION,
-    accuracy        DOUBLE PRECISION,
-    distance        INTEGER,
-    photo_path      VARCHAR(500),
-    qr_token_id     BIGINT,
-    checkin_time    TIMESTAMP    NOT NULL,
-    create_time     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    update_time     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+- The OAuth login endpoint and WeCom callback endpoint are allowed through; everything else goes through existing JWT authentication
+- One-time random `state` string + sessionStorage verification to prevent CSRF
+- The code can only be used once and is valid for 5 minutes; the back end exchanges it immediately on receipt and never caches it
+- The back end re-verifies the distance for check-in coordinates, not trusting the front end; photos are watermarked; scanning layers on geolocation
+- The callback endpoint verifies signatures + AES decryption + corpId verification, rejecting forged events
+- Rate-limit key endpoints (Redis sliding window) to prevent abuse
 
--- QR code token table
-CREATE TABLE qr_token (
-    id              BIGSERIAL PRIMARY KEY,
-    token           VARCHAR(100) NOT NULL UNIQUE,
-    location_name   VARCHAR(100),
-    status          SMALLINT     NOT NULL DEFAULT 1,
-    expire_time     TIMESTAMP    NOT NULL,
-    create_time     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+### 8.4 Contacts Synchronization Service
 
--- User table
-CREATE TABLE sys_user (
-    id              BIGSERIAL PRIMARY KEY,
-    wecom_user_id   VARCHAR(50)  NOT NULL UNIQUE,
-    name            VARCHAR(50)  NOT NULL,
-    avatar          VARCHAR(500),
-    department_ids  VARCHAR(200),
-    mobile          VARCHAR(20),
-    email           VARCHAR(100),
-    status          SMALLINT     NOT NULL DEFAULT 1,
-    create_time     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    update_time     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+```java
+@Service
+public class ContactSyncService {
 
--- Indexes
-CREATE INDEX idx_checkin_user_time ON checkin_record (user_id, checkin_time);
-CREATE INDEX idx_checkin_type ON checkin_record (checkin_type);
-CREATE INDEX idx_qr_token_token ON qr_token (token);
+    /** Full sync (nightly fallback) */
+    public void syncAll() {
+        String token = tokenManager.getAccessToken();
+        // 1. Department tree department/list
+        // 2. Iterate leaf departments, user/list?fetch_child=1 to pull members
+        // 3. Align by employee ID to sys_user.username, backfill wecom_user_id, department, name, mobile, status
+        // 4. WeCom status=5 (resigned)/member-deleted event → disable the system account
+    }
+
+    /** Incremental events (real-time) */
+    public void handleChange(String changeType, String wecomUserId) {
+        switch (changeType) {
+            case "create_user": case "update_user": upsertOne(wecomUserId); break;
+            case "delete_user": disableByWecomUserId(wecomUserId); break;
+            // Department changes sync the department table for orgService.findLeader organization routing
+            default: break;
+        }
+    }
+
+    public String wecomUserIdToUsername(String wecomUserId) {
+        return userMapper.findUsernameByWecomId(wecomUserId);
+    }
+}
 ```
+
+## 9. Pitfall Guide
+
+### 9.1 OAuth Silent Login
+
+- **The app home page/callback domain must be under a "trusted domain"**, otherwise the authorization page reports `redirect_uri parameter error`.
+- **The authorization URL must include `agentid`**, otherwise on some WeCom versions `getuserinfo` cannot obtain the app identity.
+- **The `appid` is filled with the corpid**, not the agentid; beginners often swap them.
+- **Returns openid instead of userid**: the user is outside the app's visible scope. Check whether the app's "visible scope" includes the member's department; do not silently create accounts in code.
+- **Opening the link in a PC browser does not silently authorize**: `snsapi_base` is transparent only inside the WeCom client. The front end must check the UA first; non-WeCom environments go through system username/password login.
+- **The code can only be used once and expires in 5 minutes**: refreshing the redirect page causes a code-reuse error. After successful login the app should use `router.replace` to clear the code from the URL to avoid refresh replay.
+
+### 9.2 JS-SDK Signing
+
+- **iOS signs with the entry page URL, Android with the current page URL** (see 5.3); under SPA this is the number-one cause of `invalid signature`. The entry URL must be recorded before the first route navigation.
+- **The URL participating in the signature must match `location.href` character by character**: protocol, domain, port, and query must all be included; the hash part is handled uniformly per the rules (history mode is recommended to avoid it).
+- **If the front end encodes, the back end encodes; if neither encodes, neither does**; the signature string must be concatenated in the order `jsapi_ticket&noncestr&timestamp&url`.
+- To call WeCom-specific APIs, set `beta: true` in `wx.config` and perform `wx.agentConfig` once more.
+- Local real-device debugging must use an intranet-penetration https domain; the hosts approach does not work on phones.
+
+### 9.3 Activiti and Account Mapping
+
+- **Unify the assignee identifier as the internal username**; do not write wecom_user_id directly into the BPMN assignee, otherwise if the identity source changes (DingTalk/Feishu integration later) all process definitions must be changed.
+- **Do not create duplicate accounts by wecom_user_id**: the first principle of an existing system is binding/mapping (4.6), otherwise attendance and historic to-dos split into two people.
+- **An or-sign candidate task must be claimed before handling**; completing it directly without claiming reports that the task does not belong to the current user.
+- **A countersign rejection must end the remaining instances early**: use a completionCondition containing the REJECT check + delete the remaining tasks in the listener, otherwise others still receive to-dos after rejection.
+- **Put attendance interaction in the process-completion listener**, not in some approval-button endpoint, ensuring it takes effect from any entry (PC, H5, card callback) and that attendance is not mistakenly changed before the approval truly passes.
+
+### 9.4 WeCom API Rate Limits and Others
+
+| API | Limit (for reference; official documentation prevails) |
+|-----|------|
+| gettoken | The number of calls within 5 minutes per enterprise is limited; must be cached |
+| Send messages | There is a per-app per-minute cap; make touser batched and de-duplicated where possible |
+| Contacts reads | There is a total daily cap; rely primarily on incremental callbacks |
+| Message card updates | Subject to API rate limits; avoid loop updates |
+
+Other common issues:
+
+- **The server egress IP must be added to the "Enterprise Trusted IP" whitelist**, otherwise it reports `60020`.
+- **HTTPS + ICP filing are mandatory** (mainland China servers); certificate expiry causes the entire app to fail to open with no obvious prompt — include it in monitoring.
+- **Callbacks must return `success` within seconds**, with business handled asynchronously, otherwise WeCom re-pushes and causes duplicate approvals (covered by idempotency).
+- **The textcard URL should land directly on the detail page**, combined with silent login + state redirect, to achieve "tap notification straight to approval".
+- **If the secret leaks**, reset it in the admin console immediately and restart the service; in code review, treat "secret appearing in front-end/logs" as a red line.
+
+## 10. Go-Live Checklist
+
+**WeCom admin console**
+
+- [ ] The self-built app's visible scope covers all user departments
+- [ ] The app home page is configured as the H5 mobile address (https)
+- [ ] The trusted domain is configured and the ownership verification file is accessible
+- [ ] The enterprise trusted IP is whitelisted (server egress IP)
+- [ ] Receive-message URL/Token/EncodingAESKey are configured and the GET verification passes
+
+**Accounts and identity**
+
+- [ ] `sys_user.wecom_user_id` is initialized via contacts sync, with correct employee-ID mappings
+- [ ] Unmatched accounts have clear "contact administrator/self-service binding" guidance and are never silently created
+- [ ] `snsapi_base` silent login is verified on real devices (iOS + Android)
+- [ ] Re-login after token expiry is transparent, and redirect back to the original page works (including approval-detail deep links)
+
+**Functionality**
+
+- [ ] JS-SDK `wx.config` passes on both iOS/Android (especially verify the signature URL)
+- [ ] Geolocation/camera/scanning work on real devices, and back-end secondary distance verification takes effect
+- [ ] Countersign: each person has an independent to-do; any rejection terminates and notifies the initiator
+- [ ] Or-sign: all candidates receive it; after one claims and handles it, the others' to-dos disappear
+- [ ] Organization-chart approval: correctly routes to the head/division leader by the applicant's department
+- [ ] After approval, attendance interaction (make-up correction/leave deduction) is correctly persisted
+- [ ] To-do card push is delivered, tap goes directly through and is already logged in; card button callbacks are idempotent
+
+**Security and operations**
+
+- [ ] secret/Token/AESKey come from environment variables, never in Git or logs
+- [ ] access_token/jsapi_ticket caching + distributed lock verified (multi-instance)
+- [ ] HTTPS certificate validity monitoring, API rate limiting, and audit logs for key operations
+- [ ] Incremental contacts callbacks + daily full-sync fallback job enabled
 
 ## Conclusion
 
-The core of WeCom application development lies in understanding the following key aspects:
+When doing WeCom integration under the premise of "an existing attendance system + complex Activiti approvals", the correct approach is not to rewrite everything, but to treat WeCom as an **entry point, identity provider, and message channel**:
 
-- **Development Mode Selection**: Mini program mode provides a more native experience with more direct API calls, suitable for high-frequency scenarios like attendance; H5 mode offers higher flexibility, suitable for frequently iterated content-oriented applications
-- **Authentication System**: corpid/secret/agentid three elements -> access_token global ticket -> mini program `wx.qyLogin` to get code -> backend `jscode2session` to exchange for userid
-- **Device Capability Access**: Mini programs call native capabilities directly via `wx.getLocation`, `wx.chooseMedia`, `wx.scanCode` without JS-SDK signatures
-- **Backend API Integration**: access_token management (Redis cache + distributed lock), address book sync, message push (text card / template card)
-- **Security Design**: Sensitive configuration via environment variables, JWT authentication, session_key protection, API rate limiting, data masking
-- **Deployment Requirements**: Mini program server domains require HTTPS mandatorily; backend centrally manages access_token
+- **Model selection**: with an existing web system, complex approval forms, and requirements for rapid iteration and review-free launch, H5 is a better fit than a Mini Program; OAuth2 `snsapi_base` silent authorization achieves tap-to-login, and the JS-SDK fully covers geolocation, camera, and scanning.
+- **Automatic login chain**: the front-end route guard finds no token → 302 to WeCom authorization (with state) → silent redirect back with code → back-end gettoken + `auth/getuserinfo` obtains userid → **maps to the existing system account by employee ID (rather than creating one)** → issues the system's existing JWT, after which all attendance and approval APIs are reused with zero changes.
+- **Account decoupling**: Activiti's assignee/candidates continue to use the internal username; the WeCom userid is only an external identity field on `sys_user`, converted when identifying at login and addressing at push, preserving the coexistence of multiple login methods.
+- **Approval reuse**: countersign (multi-instance + completion condition), or-sign (candidateUsers + claim), and organization-chart approval (UEL expressions dynamically resolving leaders) all reuse the existing BPMN; H5 only adds to-do list/detail/handling entries, all going through the same `taskService.complete()` underneath.
+- **Interaction and reach**: attendance interaction sits in the process-completion listener to guarantee consistency across entries; new to-dos are pushed via textcard with a link straight to the approval detail, reusing silent login; in-card one-tap approval goes through callbacks and must be idempotent.
+- **Key pitfalls**: trusted domain and enterprise trusted IP, iOS/Android signature URL differences, one-time code and state CSRF protection, never creating duplicate accounts, or-sign claiming, callbacks returning success within seconds, and centralized ticket caching.
 
-Key pitfalls: access_token concurrent refresh, mini program code single-use, `requiredPrivateInfos` declaration, server domain configuration, package size limits, API rate limits.
+Official documentation: [WeCom Developer Center](https://developer.work.weixin.qq.com/document/)
 
-Official documentation: [https://developer.work.weixin.qq.com/document/](https://developer.work.weixin.qq.com/document/)
-
-> This article uses an attendance system as a thread and WeCom Mini Program mode as the main line to outline the complete technical chain of application development. The core pattern (`wx.qyLogin` authentication -> native API calls -> backend API integration -> message push -> callback handling) applies to all types of WeCom mini program application development. H5 mode, as a comparison, still has its irreplaceable advantages in scenarios requiring rapid iteration or primarily content display.
+> The essence of this solution is "integration" rather than "rebuild": with minimal new code (one OAuth login endpoint, an account-mapping layer, a JS-SDK signature service, and a set of to-do push listeners), the years of accumulated attendance and Activiti approval capabilities appear smoothly in employees' WeCom with transparent automatic login. If check-in experience requirements increase later, a Mini Program check-in entry can be layered on top, sharing the same back-end accounts and workflow with H5 approval for smooth evolution.
