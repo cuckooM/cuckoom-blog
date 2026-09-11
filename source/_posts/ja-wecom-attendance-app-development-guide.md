@@ -1,2237 +1,407 @@
 ---
-title: "企業WeChatアプリ開発完全ガイド：勤怠管理システムを例に"
+title: "企業微信アプリ開発完全ガイド：既存の勤怠＋Activiti承認システムをH5で連携する実践"
 date: 2026-07-09 21:00:00
 tags:
-  - 企業WeChat
-  - ミニプログラム開発
-  - 勤怠管理システム
+  - 企業微信
+  - H5開発
+  - 勤怠システム
+  - Activiti
+  - ワークフロー
+  - シングルサインオン
   - API連携
-  - モバイル開発
 categories:
   - 技術実践
 lang: ja
 ---
 
-企業WeChat（WeCom）はエンタープライズ向けのコミュニケーションおよびコラボレーションプラットフォームであり、豊富なオープン API を提供し、企業自前アプリ、サードパーティアプリ、代行開発アプリをサポートしています。企業WeChatミニプログラム（WeCom Mini Program）の機能が継続的に改善されるにつれ、多くの企業が内部アプリをミニプログラムモードで開発するようになり、よりネイティブに近い体験とより強力なデバイス機能の呼び出しを獲得しています。
+多くのチームにとって企業微信（WeCom）開発は、ゼロから新しいシステムを作ることではなく、より一般的で現実的なシナリオに向き合うことです。**業務システムはすでに存在し、長年稼働している**——勤怠モジュールはとうにリリース済みで、承認フローは Activiti 上に会签（全員承認）、或签（いずれか1名が承認）、組織構造に基づく段階的承認といった複雑なフローが実装されており、承認プロセスから勤怠データを参照・連携することもあります。いまの要望は、このシステムを企業微信に持ち込み、従業員が企業微信のワークベンチからタップするだけで利用でき、**ユーザー名とパスワードを再入力する必要がなく、開いた瞬間に自分の勤怠と承認待ちタスクが表示される**ことです。
 
-本記事では勤怠管理システムをケーススタディとして、**企業WeChatミニプログラムモードをメインライン**に据え、アプリ開発の全プロセスを体系的に解説します。ミニプログラムの登録・作成、プロジェクト構造、本人認証、位置情報ベースの打刻、写真撮影による打刻、QRコードスキャンによる打刻、バックエンド API 連携、メッセージプッシュ、セキュリティ設計などの重要なセクションを網羅し、同時に H5 アプリモードとの違いも比較説明し、開発チームの技術選定と実装に役立てます。
+こうした前提では、H5 アプリ方式はミニプログラムよりも適した選択肢になることが多いです。既存システム自体が Angular + SpringBoot の Web 構成であり、H5 なら既存のフロントエンド画面とバックエンド API をそのまま再利用できます。企業微信の OAuth2 Web 認可（`snsapi_base`）と組み合わせれば、完全にシームレスなシングルサインオン／自動ログイン（免登）を実現でき、デプロイすれば即座に有効化され、審査やリリースも不要なため、承認フォームを頻繁に調整する場合のイテレーションコストが最小になります。
+
+本記事では「**既存の勤怠管理システム ＋ Activiti の複雑な承認フロー**」を背景に、**H5 方式を主线**として、業務システムを書き直さずに企業微信側の連携を完成させる方法を体系的に解説します。特に、OAuth2 シームレス自動ログインの完全な流れ、企業微信アカウントとシステムアカウントの紐付けマッピング、JS-SDK によるデバイス機能の呼び出し、そして Activiti の会签（全員承認）／或签（1名承認）／組織構造承認と勤怠連携を企業微信側で実現する方法（承認待ちプッシュ、カードからのワンタップ承認、組織構造同期）について詳しく掘り下げます。
 
 <!-- more -->
 
-## 一、企業WeChatアプリ開発の概要
+## 1. シナリオ分析と方式選定
 
-### 1.1 プラットフォームの位置づけ
+### 1.1 既存システムの前提
 
-企業WeChatオープンプラットフォームは開発者に完全な API 体系を提供し、アドレス帳管理、メッセージプッシュ、OAuth 認証、JS-SDK、ミニプログラム、効率ツール（打刻、申請、報告）などの機能をカバーしています。開発者はこれらの API に基づいて企業内部アプリを構築することも、複数企業向けのサードパーティアプリを開発することもできます。
+本記事では、業務システムの現状を次のとおり仮定します（これは中堅・大規模企業の社内システムの典型的な形でもあります）：
 
-### 1.2 アプリケーションの種類
+- **勤怠管理**：打刻、打刻記録、打刻補正（補カード）申請、勤怠集計の各機能がすでに揃っており、バックエンドが REST API を提供している
+- **承認フローエンジン**：Activiti（6.x/7.x）ベースで実装され、フロー定義に以下が含まれる：
+  - **会签（全員承認）**：1つのノードで複数人全員の承認が必要（例：打刻補正に直属上司と HR 双方の同意が必要）
+  - **或签（いずれか1名が承認）**：1つのノードの複数人のうち誰か1名が承認すればよい（例：部門の当直承認グループ）
+  - **組織構造に基づく承認**：申請者の所属部門に応じて承認者が動的に決まる（部門責任者 → 管掌役員 → HRBP）
+  - **勤怠データ連携**：承認フロー中に勤怠データの読み取り／書き戻しが発生する（例：打刻補正の承認後に打刻記録を自動修正、年次休暇承認後に残日数を減算）
+- **アカウント体系**：システム独自のユーザーテーブル、ロール・権限体系を持つ（例：Spring Security + JWT/Session）
+- **フロントエンド**：Web 版がすでに存在し、Angular シングルページアプリケーション（TypeScript）
 
-| タイプ | 適用シーン | 特徴 |
-|------|----------|------|
-| 自前アプリ | 企業内部利用 | 自社のみ閲覧可能、設定が柔軟、API 権限は管理者が割り当て |
-| サードパーティアプリ | 複数企業向けサービス提供 | 企業WeChatの審査が必要、複数企業の認可インストールをサポート |
-| 代行開発アプリ | サービスプロバイダーが企業の代わりに開発 | 企業がサービスプロバイダーに認可、プロバイダーが開発・運用を代行 |
+解決すべき本質的な課題は2つだけです：
 
-本記事は主に**自前アプリ**を扱います。これが最も一般的な開発シーンです。
+1. **アイデンティティの問題**：企業微信から入ってきた人は誰か？ システムアカウントとどう対応付け、自動ログインを実現するか？
+2. **入口とリーチの問題**：企業微信のワークベンチからどうアプリに入るか？ 承認待ちタスクをどう従業員の企業微信に能動的にプッシュするか？
 
-### 1.3 開発モード：ミニプログラム vs H5
+業務ロジック（打刻ルール、承認フロー遷移）は**1行たりとも企業微信に移す必要はありません**。企業微信が担うのは「入口 ＋ アイデンティティプロバイダ（IdP）＋ メッセージチャネル」という3つの役割だけです。
 
-企業WeChatアプリ開発には主に **ミニプログラムモード** と **H5 アプリモード** の2種類があります。それぞれ一長一短があり、選定時には総合的に検討する必要があります。
+### 1.2 なぜこのシナリオで H5 を第一選択にするのか
 
-| 比較項目 | 企業WeChatミニプログラム | H5 アプリ |
-|----------|--------------|---------|
-| 実行環境 | 企業WeChatミニプログラムランタイム | 企業WeChat内蔵ブラウザ WebView |
-| 開発フレームワーク | WXML/WXSS/JS（WeChatミニプログラム類似） | 任意のフロントエンドフレームワーク（Vue/React 等） |
-| パフォーマンス体験 | ネイティブに近い、起動が速い、ページ切替がスムーズ | WebView に依存、初回ロードが遅い |
-| オフライン機能 | ローカルキャッシュをサポート、弱電波環境でも利用可能 | オフライン非対応、ネットワークに依存 |
-| デバイス機能 | ネイティブ API を直接呼び出し（`wx.getLocation` 等） | JS-SDK 経由の間接呼び出し、署名検証が必要 |
-| 本人認証 | `wx.qyLogin` で code を取得、ユーザーに意識させない | OAuth2 ウェブ認可リダイレクト、ユーザーの認知が必要 |
-| 公開フロー | 審査提出が必要、バージョン管理が厳格 | デプロイ即座に有効、審査不要 |
-| 更新の柔軟性 | バージョン再公開が必要 | いつでもホットアップデート可能、柔軟性が高い |
-| クロスプラットフォーム一致性 | 企業WeChatがマルチプラットフォームでの一致性を保証 | iOS/Android WebView の差異を自前で適合する必要あり |
-| 適用シーン | 高頻度利用、パフォーマンス要求が高い、デバイス機能の呼び出しが必要 | 迅速な開発、頻繁なイテレーション、コンテンツ型アプリ |
+| 比較軸 | H5 アプリ（本記事の方式） | 企業微信ミニプログラム |
+|----------|--------------------|----------------|
+| 既存 Web フロントの再利用 | 既存の Angular 画面をそのまま再利用 | WXML/WXSS で全画面を書き直し必要 |
+| 既存バックエンド API の再利用 | そのまま再利用、OAuth ログインエンドポイントを1つ追加するだけ | 同様に再利用できるが、フロントは全面作り直し |
+| 自動ログイン | OAuth2 `snsapi_base` のシームレス認可、完全に無感覚 | `wx.qyLogin` でシームレス、こちらも無感覚 |
+| リリース・イテレーション | デプロイ即有効、承認フォームはいつでも変更可能 | 審査提出・リリースが必要で、緊急修正が遅い |
+| 複雑なフォーム／フロー画面 | Web 技術の柔軟性が高く、承認のようなフォーム中心の画面に適する | フォームエンジン的な画面の開発コストが高い |
+| デバイス機能 | JS-SDK：位置情報／撮影／スキャン（署名が必要） | ネイティブ API を直接呼び出し、体験はやや良好 |
+| 承認フローのような「低頻度・フォーム重度・高頻度イテレーション」業務 | 非常に適合する | やや重い |
 
-**選定の推奨**：
+**結論**：勤怠打刻自体は頻度が高くデバイス機能に強く依存するため、打刻体験は確かにミニプログラムのほうが優れています。しかし「**既存システムの連携、承認フローが複雑で頻繁に変わる、最優先は低コストでのリリースと自動ログイン**」という前提では、H5 の総合的なメリットは体験上のわずかな差をはるかに上回ります。しかも H5 でも JS-SDK で位置情報、撮影、スキャンを起動でき、勤怠シナリオを完全にカバーできます。本記事の後半では、JS-SDK の完全な署名方式と iOS/Android でのハマりどころ対処も示します。
 
-- **勤怠管理システムにはミニプログラムモードを推奨**：勤怠は高頻度操作であり、位置情報精度、撮影速度、起動速度が要求されるため、ミニプログラムのネイティブ API 呼び出しの方が直接的で体験が良い
-- **申請システムは H5 モードで可能**：申請フローのフォームが複雑で変更が頻繁な場合、H5 の柔軟性がより高い
-- **ハイブリッドモード**：同一の自前アプリでミニプログラム入口と H5 入口を同時に設定可能、シーンに応じてユーザーを誘導
+> 将来的に打刻体験のさらなる向上が求められる場合は、ハイブリッド方式も可能です。同一の自作アプリに H5 ホームページ（承認、記録、集計）とミニプログラム（打刻）の両方を設定し、メッセージカードを業務種別ごとにそれぞれへ遷移させ、バックエンドのアカウント体系は完全に共有します。
 
-本記事は**ミニプログラムモードをメインライン**として勤怠管理システムの開発を解説し、重要なポイントでは H5 モードとの違いを比較説明します。
+### 1.3 全体アーキテクチャ
 
-## 二、開発環境の構築
+```
+┌───────────────────────────────┐
+│          企業微信クライアント    │
+│  ワークベンチ / メッセージカード / スキャン │
+└───────────────┬───────────────┘
+                │ H5 を開く（内蔵 WebView）
+                ▼
+┌───────────────────────────────┐
+│  H5 フロント（既存 Web プロジェクトを再利用）│
+│  Angular SPA + wx JS-SDK     │
+│  ルートガード：token なし → OAuth へ遷移 │
+└───────────────┬───────────────┘
+                │ HTTPS（JWT）
+                ▼
+┌───────────────────────────────────────────────────────┐
+│                 既存業務バックエンド（SpringBoot）       │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐ │
+│  │ WecomOAuth   │  │ 勤怠モジュール │  │ Activiti 承認 │ │
+│  │ 免登/アカウント紐付け │  │ (既存、再利用) │  │ (既存、再利用) │ │
+│  └──────┬───────┘  └──────────────┘  └───────┬───────┘ │
+│         │          アカウント対応表 user_id ↔ wecom_userid │
+└─────────┼────────────────────────────────────┼─────────┘
+          ▼                                    ▼
+┌───────────────────┐              ┌──────────────────────┐
+│ 企業微信サーバー API │              │ PostgreSQL / Redis   │
+│ gettoken           │              │ 業務テーブル + act_* ワークフローテーブル│
+│ auth/getuserinfo   │              └──────────────────────┘
+│ jsapi_ticket       │
+│ message/send プッシュ │◀──── 承認待ちタスク発生時、バックエンドが能動的にカードをプッシュ
+└───────────────────┘
+```
 
-### 2.1 企業WeChatの登録とアプリケーションの作成
+重要な設計原則：**企業微信の userid は、システムのユーザーテーブル上の1つの外部 ID フィールドにすぎない**ということです。勤怠や Activiti の候補者／処理者には、あくまでシステム内部の userId を使用します（userid と統一する方法については 4.5 節で議論します）。こうすることで企業微信は新しいログイン手段の1つにとどまり、既存の権限モデルやワークフローモデルに侵入しません。
 
-1. [企業WeChat管理コンソール](https://work.weixin.qq.com/) にアクセスし、企業WeChatを登録（管理者の操作が必要）
-2. 「アプリ管理」->「自前」->「アプリ作成」に入る
-3. アプリ名、ロゴ、閲覧可能範囲（どの部門/従業員が利用可能か）を入力
-4. 作成完了後、3つの重要なパラメータを取得：
+## 2. 開発環境の構築
+
+### 2.1 自作アプリの作成と3要素の取得
+
+1. [企業微信管理コンソール](https://work.weixin.qq.com/) にアクセスし、管理者アカウントでログインします
+2. 「アプリ管理」→「自作」→「アプリ作成」で、アプリ名（例：「モバイル勤怠承認」）、ロゴ、表示範囲を入力します
+3. 作成後、3つの重要なパラメータを記録します：
 
 | パラメータ | 説明 | 取得場所 |
 |------|------|----------|
-| `corpid` | 企業の一意識別子 | 我社の企業 -> 企業情報 -> 企業ID |
-| `agentid` | アプリの一意識別子 | アプリ管理 -> 自前アプリ -> AgentId |
-| `secret` | アプリシークレット | アプリ管理 -> 自前アプリ -> Secret |
+| `corpid` | 企業の一意識別子 | 自社情報 → 企業情報 → 企業 ID |
+| `agentid` | アプリの一意識別子 | アプリ管理 → 自作アプリ → AgentId |
+| `secret` | アプリのシークレット | アプリ管理 → 自作アプリ → Secret |
 
-> ⚠️ `secret` は最高機密の認証情報であり、**フロントエンドコードに絶対に出現してはならません**、サーバー側で保存してください。
+> ⚠️ `secret` は最上位の機密クレデンシャルです。**サーバー側にのみ保存**し、H5 フロントのコード、Git リポジトリ、ブラウザリクエストには絶対に含めないでください。
 
-### 2.2 企業WeChatミニプログラムの作成
+### 2.2 アプリホームページの設定（H5 入口）
 
-企業WeChatミニプログラムの作成フローは WeChat ミニプログラムと類似していますが、バインドされるのは企業WeChatの主体です：
+アプリ詳細ページの「アプリホームページ」で H5 のトップページ URL を設定します：
 
-1. [企業WeChat管理コンソール](https://work.weixin.qq.com/) にログイン ->「アプリ管理」-> 自前アプリを選択
-2. アプリ詳細ページで「ミニプログラム」モジュールを見つけ、「バインド/ミニプログラム作成」をクリック
-3. 企業WeChatは2つの方法でミニプログラムを関連付けることをサポート：
-   - **既存のWeChatミニプログラムを関連付け**：WeChatオープンプラットフォームで登録したミニプログラムを再利用、同一主体である必要あり
-   - **企業WeChat内で直接作成**：企業WeChat自前のミニプログラム、WeChatオープンプラットフォームに依存しない
-4. 作成後、ミニプログラム管理ページで `wx_app_id`（ミニプログラム AppID）を取得
+```
+アプリ管理 → 自作アプリ → アプリホームページ → Web ページを設定
+  ホームページ URL：https://attendance.yourcompany.com/mobile/
+```
 
-**開発ツール**：[WeChat開発者ツール](https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html)を使用して開発とデバッグを行い、「企業WeChatミニプログラム」モードを選択するか、企業WeChatプラグインで関連付けます。
+従業員が企業微信のワークベンチでアプリアイコンをタップすると、企業微信内蔵ブラウザでこの URL が開かれます。H5 モバイル版は独立したパス（例：`/mobile/`）を使用し、PC 管理画面と分けることで、ルーティング分流と独立レイアウトを行いやすくすることをおすすめします。
+
+### 2.3 信頼ドメインの設定（H5 で最も重要な管理コンソール設定）
+
+H5 方式では、OAuth Web 認可のコールバックドメインと JS-SDK の両方が「信頼ドメイン」に依存します：
+
+```
+アプリ管理 → 自作アプリ → 開発者インターフェース → Web 認可およびJS-SDK
+  → 信頼ドメインを設定：attendance.yourcompany.com
+  → ドメイン所有権確認ファイルをダウンロード（WW_verify_xxxx.txt）
+  → ファイルをドメインのルートディレクトリに配置し、アクセス可能にする：
+    https://attendance.yourcompany.com/WW_verify_xxxx.txt
+```
+
+ドメインの要件：
+
+- **HTTPS** 必須（OAuth 認可と JS-SDK で強制）
+- ICP 登録（中国大陸のサーバー）が完了していること
+- ドメイン所有権確認ファイルはフロントの静的リソースサービスまたは Nginx が直接ホスティングすること
+- 1つのアプリに複数の信頼ドメインを設定可能（ドメイン主体は一致が必要）。コールバック URL はこれらのドメイン配下である必要があります
+
+あわせて「企業信頼 IP」も設定します。サーバー API を呼び出すサーバーの出口 IP をホワイトリストに追加しないと、`gettoken` などのインターフェースが `60020 not allow to access from your ip` を返します。
+
+### 2.4 メッセージ受信の設定（コールバック、カードボタン承認用）
+
+「メッセージカード上で直接承認／却下をタップする」（画面を開かない）操作を実現するには、コールバックの設定が必要です：
+
+```
+アプリ管理 → 自作アプリ → メッセージ受信 → API 受信を設定
+  URL:             https://attendance.yourcompany.com/api/wecom/callback/message
+  Token:           任意（署名検証に使用）
+  EncodingAESKey:  ランダム生成（メッセージ本体の AES 暗号化／復号に使用）
+```
+
+承認待ちからの遷移だけでカード内インタラクションを行わないなら、いったん未設定でも構いません。ただし最初から設定しておくことをおすすめします（第7章で使用します）。
+
+### 2.5 ローカル開発環境
+
+H5 のローカル開発で中核となる難所は、OAuth コールバックと JS-SDK に信頼ドメイン ＋ HTTPS が要求される一方、ローカルは `http://localhost` であることです。よく使われる方法は2つあります。
+
+**方法1：内部ネットワーク穿透（リバースプロキシトンネル）（推奨、実環境に最も近い）**
 
 ```bash
-# WeChat開発者ツールのダウンロード（コマンドライン版、CI用）
-# 公式ダウンロードページ：https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html
-# CLI パス例（macOS）：
-/Applications/wechatwebdevtools.app/Contents/MacOS/cli \
-  --login --project /path/to/miniprogram \
-  --preview --qr-output /tmp/preview-qr.png
+# frp または ngrok を使い、ローカルの 8080／フロントのポートを
+# 登録済みドメインのサブパスにマッピングする
+# 例：https://dev-attendance.yourcompany.com を公開
+frpc -c frpc.ini
+
+# Angular dev server がホスト名経由でアクセスされることを許可する（angular.json）
+# serve オプション：host を 0.0.0.0 に、デフォルトポート 4200
+# angular.json -> projects/<name>.architect.serve.options
+{ "host": "0.0.0.0", "port": 4200 }
+# またはコマンドライン：ng serve --host 0.0.0.0 --port 4200
 ```
 
-### 2.3 信頼できるドメインとサーバードメインの設定
+穿透で公開したドメインを（開発段階では）管理コンソールの信頼ドメインに追加し、確認ファイルをローカルの静的ディレクトリに置けば確認を通過できます。
 
-**H5 モード**では信頼できるドメイン（ウェブ認可および JS-SDK）の設定が必要です：
-
-```
-アプリ管理 -> 自前アプリ -> 開発者インターフェース -> ウェブ認可及び JS-SDK
-  -> 信頼できるドメインの設定：attendance.yourcompany.com
-  -> ドメイン所有権検証ファイルをダウンロードし、ドメインルートディレクトリに配置
-```
-
-**ミニプログラムモード**では管理コンソールで「サーバードメイン」（request、uploadFile、downloadFile、socket）の設定が必要です：
-
-```
-アプリ管理 -> 自前アプリ -> 開発者インターフェース -> ミニプログラム
-  -> サーバードメイン：
-    request 合法ドメイン：https://api.attendance.yourcompany.com
-    uploadFile 合法ドメイン：https://upload.attendance.yourcompany.com
-    downloadFile 合法ドメイン：https://download.attendance.yourcompany.com
-```
-
-ドメインは以下の条件を満たす必要があります：
-- HTTPS をサポート（本番環境、ミニプログラムは強制要件）
-- ICP 備案済み（中国本土サーバーの場合）
-- request ドメインは IP アドレス、localhost をサポートしない
-- ドメイン設定は毎月最大50回まで変更可能
-
-### 2.4 ローカル開発環境
-
-ミニプログラム開発は WeChat 開発者ツールを使用し、ローカルで HTTPS ドメイン通過は不要ですが、バックエンドサービスは必要です：
+**方法2：hosts ＋ mkcert（公網不要、純粋な画面連携向け）**
 
 ```bash
-# バックエンドのローカル起動（SpringBoot）
-cd ~/work/code/attendance-backend
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
-
-# ミニプログラム開発者ツールでの設定：
-# - 開発設定 -> 合法ドメインを検証しない（開発段階でチェック）
-# - AppID に企業WeChatミニプログラムの AppID を入力
-# - デバッグベースライブラリは最新安定版を選択
-```
-
-H5 モードのローカル開発では HTTPS とドメイン検証の問題を解決する必要があります：
-
-```bash
-# H5 モード：ngrok または frp で内部ネットワーク通過を行う
-ngrok http 8080
-
-# または mkcert でローカル HTTPS 証明書を生成
 mkcert -install
-mkcert localhost 127.0.0.1
-
-# hosts ファイルの設定（信頼できるドメインをローカルに向ける）
+mkcert attendance.yourcompany.com        # ローカル信頼証明書を生成
 # /etc/hosts
 127.0.0.1 attendance.yourcompany.com
 ```
 
-開発段階では企業WeChat管理コンソールで信頼できるドメインを内部ネットワーク通過アドレスに設定できますが、token のセキュリティに注意してください。
+> 注意：hosts 方式はブラウザの証明書検証を通せるだけです。企業微信クライアントの OAuth 認可は実際の企業微信サーバーを経由して戻ってくるため、実機デバッグ時にスマートフォンはあなたの PC の hosts を使えません。したがって**実機デバッグでは必ず穿透ドメインを使用**してください。
 
-## 三、ミニプログラムのプロジェクト構造
+**バックエンドのローカル起動**：
 
-企業WeChatミニプログラムのプロジェクト構造は WeChat ミニプログラムと一致しています。TypeScript で開発することでより良い型安全性と開発体験が得られます。
-
-### 3.1 ディレクトリ構造
-
-```
-miniprogram/
-├── app.ts                    # ミニプログラムのエントリロジック
-├── app.json                  # ミニプログラムのグローバル設定
-├── app.wxss                  # グローバルスタイル
-├── sitemap.json              # 検索設定
-├── project.config.json       # プロジェクト設定（AppID、コンパイル設定等）
-├── tsconfig.json             # TypeScript 設定
-├── typings/                  # 型宣言
-│   ├── index.d.ts
-│   └── wecom.d.ts            # 企業WeChat API 型補充
-├── pages/
-│   ├── index/                # ホームページ（勤怠打刻）
-│   │   ├── index.ts
-│   │   ├── index.wxml
-│   │   ├── index.wxss
-│   │   └── index.json
-│   ├── records/              # 打刻記録
-│   │   ├── index.ts
-│   │   ├── index.wxml
-│   │   ├── index.wxss
-│   │   └── index.json
-│   ├── apply/                # 再打刻申請
-│   │   ├── index.ts
-│   │   ├── index.wxml
-│   │   ├── index.wxss
-│   │   └── index.json
-│   └── scan/                 # QRコードスキャン打刻
-│       ├── index.ts
-│       ├── index.wxml
-│       ├── index.wxss
-│       └── index.json
-├── components/
-│   ├── checkin-button/      # 打刻ボタンコンポーネント
-│   └── location-card/       # 位置情報カード
-├── services/                 # ビジネスサービス層
-│   ├── auth.service.ts       # 認証サービス
-│   ├── checkin.service.ts   # 打刻サービス
-│   └── api.service.ts       # HTTP リクエストカプセル化
-├── utils/
-│   ├── request.ts            # リクエストユーティリティ（token 注入込み）
-│   ├── location.ts           # 位置情報ユーティリティ
-│   └── format.ts             # フォーマットユーティリティ
-└── config/
-    ├── env.ts               # 環境設定
-    └── constant.ts           # 定数
+```bash
+cd ~/work/code/attendance-backend
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-### 3.2 app.json グローバル設定
+## 3. H5 フロントエンドプロジェクトの組み込み
 
-```json
-{
-  "pages": [
-    "pages/index/index",
-    "pages/records/index",
-    "pages/apply/index",
-    "pages/scan/index"
-  ],
-  "window": {
-    "navigationBarTitleText": "勤怠管理システム",
-    "navigationBarBackgroundColor": "#128BF3",
-    "navigationBarTextStyle": "white",
-    "backgroundColor": "#F5F5F5",
-    "enablePullDownRefresh": false
-  },
-  "tabBar": {
-    "color": "#999999",
-    "selectedColor": "#128BF3",
-    "list": [
-      {
-        "pagePath": "pages/index/index",
-        "text": "打刻"
-      },
-      {
-        "pagePath": "pages/records/index",
-        "text": "記録"
-      }
-    ]
-  },
-  "permission": {
-    "scope.userLocation": {
-      "desc": "勤怠打刻の位置情報検証に使用"
-    }
-  },
-  "requiredPrivateInfos": [
-    "getLocation"
-  ],
-  "usingComponents": {}
-}
+### 3.1 ディレクトリ構成（既存 Angular プロジェクトを再利用し、モバイルモジュールを追加）
+
+新規プロジェクトを作る必要はありません。既存の Angular + TypeScript プロジェクトに、モバイル向けの遅延ロードモジュール（feature module / routes）と企業微信アダプション層を追加するだけです：
+
+```
+attendance-web/
+├── src/
+│   ├── main.ts
+│   ├── index.html                   # ここで <script> により jweixin を読み込むことも可能
+│   ├── app/
+│   │   ├── app.routes.ts            # ルーティング総入口（PC/モバイル分流）
+│   │   ├── mobile/                  # 企業微信内 H5 モバイル（遅延ロードモジュール）
+│   │   │   ├── mobile.routes.ts     # モバイルサブルート
+│   │   │   ├── guards/
+│   │   │   │   └── wecom-auth.guard.ts   # 免登ルートガード（CanActivate）
+│   │   │   └── pages/
+│   │   │       ├── checkin/checkin.component.ts      # 打刻ホーム
+│   │   │       ├── records/records.component.ts      # 打刻記録
+│   │   │       ├── todo/todo-list.component.ts       # 承認待ち（Activiti tasks）
+│   │   │       ├── todo/approval-detail.component.ts # 承認詳細（会签/或签の進捗）
+│   │   │       ├── apply/makeup-apply.component.ts   # 打刻補正申請（フロー開始）
+│   │   │       └── oauth/oauth-callback.component.ts # OAuth コールバック着陸ページ
+│   │   ├── core/
+│   │   │   ├── interceptors/
+│   │   │   │   └── auth.interceptor.ts   # HttpClient インターセプター（JWT 注入、401 で再ログイン）
+│   │   │   └── services/            # 既存業務 Service を再利用
+│   │   │       ├── checkin.service.ts
+│   │   │       └── approval.service.ts
+│   │   └── wecom/                   # 企業微信アダプション層（今回新規追加する中核）
+│   │       ├── env.service.ts       # 企業微信環境かどうか、UA 判定
+│   │       ├── oauth.service.ts     # OAuth2 免登（自動ログイン）遷移ロジック
+│   │       ├── jssdk.service.ts     # wx.config / agentConfig / 署名
+│   │       └── device.service.ts    # 位置情報、撮影、スキャンのラッパー
+├── public/ （または src/）
+│   └── WW_verify_xxxx.txt           # ドメイン所有権確認ファイル（静的リソースのルートに配置）
+└── angular.json
 ```
 
-> ⚠️ 企業WeChatミニプログラムは2023年以降、`app.json` での `requiredPrivateInfos` の宣言を必須としています。これを指定しない場合、`wx.getLocation` などのプライバシー API が呼び出せません。
+### 3.2 企業微信 JS-SDK の組み込み
 
-### 3.3 app.ts エントリロジック
+企業微信 H5 では `jweixin` モジュールを使用します（WeChat 公式アカウントの JSSDK と同源で、企業微信がその上に `wx.agentConfig` と企業専用インターフェースを拡張しています）：
+
+```bash
+npm install weixin-js-sdk --save
+# または index.html で直接読み込み
+# <script src="https://res.wx.qq.com/open/js/jweixin-1.2.0.js"></script>
+```
 
 ```typescript
-// app.ts
-interface AppData {
-  userInfo?: WeComUserInfo;
-  sessionKey?: string;
-  serverToken?: string;
-}
+// src/app/wecom/env.service.ts
+import { Injectable } from '@angular/core';
 
-interface WeComUserInfo {
-  userid: string;
-  name: string;
-  avatar?: string;
-  department?: number[];
-}
+@Injectable({ providedIn: 'root' })
+export class WecomEnvService {
+  /** 現在企業微信クライアント内で動作しているか */
+  isInWecom(): boolean {
+    const ua = navigator.userAgent.toLowerCase();
+    // 企業微信の UA には wxwork と micromessenger の両方が含まれる
+    return /wxwork/.test(ua) && /micromessenger/.test(ua);
+  }
 
-App<AppData>({
-  globalData: {
-    userInfo: undefined,
-    sessionKey: undefined,
-    serverToken: undefined,
-  },
-
-  onLaunch() {
-    // ミニプログラム起動時に企業WeChatログインを実行
-    this.qyLogin();
-  },
-
-  /**
-   * 企業WeChatログインフロー
-   * 1. wx.qyLogin を呼び出して code を取得
-   * 2. code をバックエンドに送信
-   * 3. バックエンドが code を使って userid と session_key を取得
-   * 4. server token をキャッシュし、後続のビジネスリクエストに使用
-   */
-  async qyLogin() {
-    try {
-      const { code } = await wx.qyLogin({
-        desc: '企業WeChatの本人確認情報を取得',
-      });
-
-      if (!code) {
-        console.error('qyLogin が code を返しませんでした');
-        return;
-      }
-
-      // code をバックエンドに送信して token と交換
-      const result = await this.requestLogin(code);
-
-      this.globalData.serverToken = result.token;
-      this.globalData.userInfo = result.userInfo;
-
-      console.log('企業WeChatログイン成功', result.userInfo.userid);
-    } catch (err) {
-      console.error('企業WeChatログイン失敗', err);
-      wx.showToast({ title: 'ログイン失敗、再試行してください', icon: 'error' });
-    }
-  },
-
-  /**
-   * バックエンドログインインターフェースの呼び出し
-   */
-  requestLogin(code: string): Promise<{ token: string; userInfo: WeComUserInfo }> {
-    return new Promise((resolve, reject) => {
-      wx.request({
-        url: 'https://api.attendance.yourcompany.com/api/auth/qy-login',
-        method: 'POST',
-        data: { code },
-        success: (res) => {
-          if (res.statusCode === 200 && res.data.code === 0) {
-            resolve(res.data.data);
-          } else {
-            reject(new Error(res.data.message || 'ログイン失敗'));
-          }
-        },
-        fail: reject,
-      });
-    });
-  },
-
-  /**
-   * サーバー側 token の取得（ローカルキャッシュ付き）
-   */
-  getServerToken(): string | undefined {
-    return this.globalData.serverToken;
-  },
-});
-```
-
-> 💡 **H5 モードとの比較**：H5 モードでは OAuth2 ウェブ認可リダイレクトを経由して code を取得する必要があり、ページリダイレクトと URL パラメータの処理が発生します。ミニプログラムモードでは `wx.qyLogin` で直接 code を取得でき、ページジャンプが不要で、よりスムーズな体験を提供します。
-
-### 3.4 TypeScript 設定
-
-```json
-// tsconfig.json
-{
-  "compilerOptions": {
-    "target": "ES2017",
-    "module": "CommonJS",
-    "moduleResolution": "node",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "lib": ["ES2017"],
-    "typeRoots": ["./node_modules/@types", "./typings"],
-    "rootDir": ".",
-    "outDir": "miniprogram"
-  },
-  "include": ["./**/*.ts"],
-  "exclude": ["node_modules"]
+  /** iOS かどうか（JS-SDK 署名 URL の扱いが異なる、第5章参照） */
+  isIOS(): boolean {
+    return /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+  }
 }
 ```
 
-### 3.5 企業WeChat API 型宣言
+### 3.3 ルーティングと免登ガード
 
-WeChatミニプログラムのベースライブラリ型には企業WeChat専用 API が含まれていないため、補充宣言が必要です：
+モバイル側のすべての業務ルートを同一の `CanActivate` ガード配下に置きます。システムの token がなければ OAuth 免登（自動ログイン）を開始し、ログイン成功後に元のページへ戻ります。これが「アプリを開くと自動ログイン」を実現するマスタースイッチであり、第4章で詳しく展開します。
 
 ```typescript
-// typings/wecom.d.ts
+// src/app/mobile/mobile.routes.ts
+import { Routes } from '@angular/router';
+import { WecomAuthGuard } from './guards/wecom-auth.guard';
 
-declare interface WeComQyLoginOption {
-  desc?: string;
-  success?: (res: { code: string }) => void;
-  fail?: (err: { errMsg: string }) => void;
-  complete?: () => void;
-}
+export const MOBILE_ROUTES: Routes = [
+  { path: '', pathMatch: 'full', redirectTo: 'checkin' },
+  {
+    path: 'checkin',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () => import('./pages/checkin/checkin.component').then(m => m.CheckinComponent),
+  },
+  {
+    path: 'records',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () => import('./pages/records/records.component').then(m => m.RecordsComponent),
+  },
+  {
+    path: 'todo',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () => import('./pages/todo/todo-list.component').then(m => m.TodoListComponent),
+  },
+  {
+    path: 'approval/:taskId',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () =>
+      import('./pages/todo/approval-detail.component').then(m => m.ApprovalDetailComponent),
+  },
+  {
+    path: 'apply/makeup',
+    canActivate: [WecomAuthGuard],
+    loadComponent: () =>
+      import('./pages/apply/makeup-apply.component').then(m => m.MakeupApplyComponent),
+  },
+  // OAuth コールバック着陸ページ：ガードは付けない
+  {
+    path: 'oauth/callback',
+    loadComponent: () =>
+      import('./pages/oauth/oauth-callback.component').then(m => m.OauthCallbackComponent),
+  },
+];
+```
 
-declare interface WeComSelectEnterpriseContactOption {
-  from?: number;
-  selectedDepartmentIds?: number[];
-  selectedUserIds?: string[];
-  mode?: 'multi' | 'single';
-  type?: 'department' | 'user' | 'department_and_user';
-  selectedDepartmentPaths?: string[];
-  success?: (res: {
-    result: {
-      departmentIdList: number[];
-    };
-  }) => void;
-  fail?: (err: { errMsg: string }) => void;
-}
+```typescript
+// src/app/mobile/guards/wecom-auth.guard.ts
+import { inject } from '@angular/core';
+import { CanActivateFn } from '@angular/router';
+import { WecomOAuthService } from '../../wecom/oauth.service';
 
-declare interface WeComOption {
-  corpId: string;
-  agentId: string;
-  timestamp: string;
-  nonceStr: string;
-  signature: string;
-}
+export const WecomAuthGuard: CanActivateFn = (route, state) => {
+  const oauth = inject(WecomOAuthService);
 
-declare namespace WeCom {
-  interface UserInfo {
-    userid: string;
-    name: string;
-    department?: number[];
-    avatar?: string;
-    email?: string;
-    mobile?: string;
+  // 中核：ログイン済みであることを保証する。未ログイン時は redirectToWecomAuth 内で
+  // OAuth へのフルページ遷移がトリガーされる
+  if (oauth.hasToken()) {
+    return true;
   }
-
-  interface InvokeResult {
-    err_msg: string;
-    [key: string]: any;
-  }
-}
-
-declare const wx: {
-  // 企業WeChat専用 API
-  qyLogin(option: WeComQyLoginOption): void;
-  selectEnterpriseContact(option: WeComSelectEnterpriseContactOption): void;
-  qwChooseEnterpriseContact(option: WeComSelectEnterpriseContactOption): void;
-
-  // 汎用 API（WeChatミニプログラムベースライブラリ）
-  request(option: any): WeApp.RequestTask;
-  getLocation(option: WeApp.GetLocationOption): void;
-  chooseImage(option: any): void;
-  chooseMedia(option: any): void;
-  scanCode(option: any): void;
-  setStorage(option: any): void;
-  getStorage(option: any): void;
-  showToast(option: any): void;
-  [key: string]: any;
+  oauth.redirectToWecomAuth(state.url);   // 現在ページから離脱する
+  return new Promise<boolean>(() => false); // 今回のナビゲーションを停止し、フルページ遷移を待つ
 };
 ```
 
-## 四、企業WeChatミニプログラムの本人認証
-
-### 4.1 ログインフロー全体像
-
-企業WeChatミニプログラムのログインフローは H5 OAuth より簡潔で、全プロセスがユーザーに意識されません：
-
-```
-ミニプログラム側              バックエンドサービス           企業WeChat API
-  │                          │                        │
-  │  1. wx.qyLogin()         │                        │
-  │ ─────────────────────────│                        │
-  │  code を取得             │                        │
-  │                          │                        │
-  │  2. POST /auth/qy-login  │                        │
-  │    (code)                │                        │
-  │ ─────────────────────────▶                        │
-  │                          │  3. gettoken            │
-  │                          │ ────────────────────────▶
-  │                          │  access_token          │
-  │                          │ ◀───────────────────────│
-  │                          │                        │
-  │                          │  4. jscode2session      │
-  │                          │ ────────────────────────▶
-  │                          │  userid + session_key  │
-  │                          │ ◀───────────────────────│
-  │                          │                        │
-  │                          │  5. JWT/Session を生成  │
-  │                          │    Redis にキャッシュ    │
-  │                          │                        │
-  │  6. JWT + userInfo を返却 │                        │
-  │ ◀─────────────────────────                        │
-  │                          │                        │
-  │  7. 後続リクエストに JWT を付与 │                    │
-  │ ─────────────────────────▶                        │
-```
-
-### 4.2 ミニプログラム側：wx.qyLogin
-
-`wx.qyLogin` は企業WeChatミニプログラム専用 API で、返される `code` をサーバー側でユーザー身元と交換するために使用します。
+ルートルーティングでは、`mobile` パス配下にモバイルモジュール全体を遅延ロードします：
 
 ```typescript
-// services/auth.service.ts
-
-export class AuthService {
-  private static instance: AuthService;
-  private serverToken: string | null = null;
-  private userInfo: WeCom.UserInfo | null = null;
-
-  static getInstance(): AuthService {
-    if (!AuthService.instance) {
-      AuthService.instance = new AuthService();
-    }
-    return AuthService.instance;
-  }
-
-  /**
-   * 企業WeChatログイン
-   * wx.qyLogin が返す code の有効期限は5分間、一度のみ使用可能
-   */
-  async qyLogin(): Promise<void> {
-    const { code } = await this.callQyLogin();
-    if (!code) {
-      throw new Error('qyLogin で code を取得できませんでした');
-    }
-
-    const result = await this.exchangeToken(code);
-    this.serverToken = result.token;
-    this.userInfo = result.userInfo;
-
-    // token をローカルキャッシュ（有効期限内は再ログイン不要）
-    wx.setStorage({
-      key: 'server_token',
-      data: result.token,
-    });
-  }
-
-  private callQyLogin(): Promise<{ code: string }> {
-    return new Promise((resolve, reject) => {
-      wx.qyLogin({
-        desc: '企業WeChatの本人確認情報を取得',
-        success: resolve,
-        fail: reject,
-      });
-    });
-  }
-
-  private async exchangeToken(code: string) {
-    return new Promise<{ token: string; userInfo: WeCom.UserInfo }>(
-      (resolve, reject) => {
-        wx.request({
-          url: 'https://api.attendance.yourcompany.com/api/auth/qy-login',
-          method: 'POST',
-          data: { code },
-          success: (res) => {
-            if (res.statusCode === 200 && res.data.code === 0) {
-              resolve(res.data.data);
-            } else {
-              reject(new Error(res.data?.message || 'token の取得に失敗'));
-            }
-          },
-          fail: reject,
-        });
-      },
-    );
-  }
-
-  getToken(): string | null {
-    return this.serverToken;
-  }
-
-  getUserInfo(): WeCom.UserInfo | null {
-    return this.userInfo;
-  }
-}
-```
-
-### 4.3 バックエンド：code から userid への交換
-
-バックエンドは `code` を使って企業WeChatの `jscode2session` インターフェースを呼び出し、`userid` と `session_key` を取得します。
-
-**インターフェースアドレス**：
-
-```
-GET https://qyapi.weixin.qq.com/cgi-bin/service/miniprogram/jscode2session
-  ?access_token=ACCESS_TOKEN
-  &js_code=CODE
-  &grant_type=authorization_code
-```
-
-**SpringBoot 実装**：
-
-```java
-/**
- * 企業WeChat認証 Controller
- *
- * @author cuckoom
- */
-@RestController
-@RequestMapping("/api/auth")
-@Slf4j
-public class QyAuthController {
-
-    @Resource
-    private QyAuthService qyAuthService;
-
-    @Resource
-    private JwtTokenProvider jwtTokenProvider;
-
-    /**
-     * ミニプログラムログイン：code から userid を取得し、JWT を発行
-     *
-     * @param request ミニプログラムログインリクエスト
-     * @return JWT token + ユーザー情報
-     */
-    @PostMapping("/qy-login")
-    public Result<QyLoginVO> qyLogin(@RequestBody @Valid QyLoginDTO request) {
-        log.info("企業WeChatミニプログラムログイン、code={}", request.getCode());
-        try {
-            // 1. code から userid と session_key を取得
-            QySessionDTO session = qyAuthService.code2Session(request.getCode());
-            log.info("ログイン成功、userid={}", session.getUserid());
-
-            // 2. ユーザーレコードの照会/作成
-            SysUser user = qyAuthService.getOrCreateUser(session.getUserid());
-
-            // 3. JWT の発行
-            String token = jwtTokenProvider.generateToken(user.getId(), user.getWecomUserId());
-
-            // 4. session_key をキャッシュ（後続の暗号化データ復号に使用）
-            qyAuthService.cacheSessionKey(session.getUserid(), session.getSessionKey());
-
-            // 5. 返却オブジェクトの構築
-            QyLoginVO vo = new QyLoginVO();
-            vo.setToken(token);
-            vo.setUserInfo(QyUserInfoVO.builder()
-                    .userid(user.getWecomUserId())
-                    .name(user.getName())
-                    .avatar(user.getAvatar())
-                    .department(user.getDepartmentIds())
-                    .build());
-
-            return Result.success(vo);
-        } catch (BusinessException e) {
-            log.warn("企業WeChatログイン業務例外: {}", e.getMessage());
-            return Result.fail(e.getCode(), e.getMessage());
-        } catch (Exception e) {
-            log.error("企業WeChatログインシステム例外", e);
-            return Result.fail(ErrorCode.SYSTEM_ERROR);
-        }
-    }
-}
-```
-
-```java
-/**
- * 企業WeChat認証 Service
- *
- * @author cuckoom
- */
-@Service
-@Slf4j
-public class QyAuthService {
-
-    private static final String SESSION_KEY_CACHE_PREFIX = "wecom:session_key:";
-
-    @Value("${wecom.corpid}")
-    private String corpId;
-
-    @Value("${wecom.agentid}")
-    private String agentId;
-
-    @Value("${wecom.secret}")
-    private String secret;
-
-    @Resource
-    private WecomTokenManager tokenManager;
-
-    @Resource
-    private RestTemplate restTemplate;
-
-    @Resource
-    private StringRedisTemplate redisTemplate;
-
-    @Resource
-    private SysUserMapper userMapper;
-
-    /**
-     * ミニプログラム code から session を取得
-     *
-     * @param code wx.qyLogin が返す code
-     * @return userid + session_key
-     */
-    public QySessionDTO code2Session(String code) {
-        String accessToken = tokenManager.getAccessToken();
-
-        String url = String.format(
-                "https://qyapi.weixin.qq.com/cgi-bin/service/miniprogram/jscode2session" +
-                        "?access_token=%s&js_code=%s&grant_type=authorization_code",
-                accessToken, code
-        );
-
-        JSONObject response = restTemplate.getForObject(url, JSONObject.class);
-        if (response == null || response.getIntValue("errcode") != 0) {
-            throw new BusinessException(ErrorCode.QY_LOGIN_FAILED,
-                    "code からの session 取得に失敗: " + (response == null ? "null" : response.getString("errmsg")));
-        }
-
-        return QySessionDTO.builder()
-                .userid(response.getString("userid"))
-                .sessionKey(response.getString("session_key"))
-                .build();
-    }
-
-    /**
-     * システムユーザーの照会または作成
-     */
-    public SysUser getOrCreateUser(String wecomUserId) {
-        SysUser user = userMapper.findByWecomUserId(wecomUserId);
-        if (user != null) {
-            return user;
-        }
-
-        // 新規ユーザー：アドレス帳 API で詳細を取得して登録
-        WecomUserDTO wecomUser = getUserInfoByApi(wecomUserId);
-        user = new SysUser();
-        user.setWecomUserId(wecomUserId);
-        user.setName(wecomUser.getName());
-        user.setAvatar(wecomUser.getAvatar());
-        user.setDepartmentIds(wecomUser.getDepartment());
-        user.setMobile(wecomUser.getMobile());
-        user.setEmail(wecomUser.getEmail());
-        user.setStatus(1);
-        user.setCreateTime(LocalDateTime.now());
-        user.setUpdateTime(LocalDateTime.now());
-        userMapper.insert(user);
-
-        return user;
-    }
-
-    /**
-     * session_key をキャッシュ（有効期限7日間）
-     */
-    public void cacheSessionKey(String userid, String sessionKey) {
-        String key = SESSION_KEY_CACHE_PREFIX + userid;
-        redisTemplate.opsForValue().set(key, sessionKey, 7, TimeUnit.DAYS);
-    }
-
-    /**
-     * キャッシュされた session_key を取得
-     */
-    public String getSessionKey(String userid) {
-        return redisTemplate.opsForValue().get(SESSION_KEY_CACHE_PREFIX + userid);
-    }
-
-    /**
-     * アドレス帳 API でユーザー詳細を取得
-     */
-    private WecomUserDTO getUserInfoByApi(String userid) {
-        String accessToken = tokenManager.getAccessToken();
-        String url = String.format(
-                "https://qyapi.weixin.qq.com/cgi-bin/user/get?access_token=%s&userid=%s",
-                accessToken, userid
-        );
-
-        JSONObject response = restTemplate.getForObject(url, JSONObject.class);
-        if (response == null || response.getIntValue("errcode") != 0) {
-            throw new BusinessException(ErrorCode.WECOM_API_ERROR,
-                    "ユーザー情報の取得に失敗: " + (response == null ? "null" : response.getString("errmsg")));
-        }
-
-        return WecomUserDTO.builder()
-                .userid(response.getString("userid"))
-                .name(response.getString("name"))
-                .avatar(response.getString("avatar"))
-                .department(response.getJSONArray("department").toJavaList(Integer.class))
-                .mobile(response.getString("mobile"))
-                .email(response.getString("email"))
-                .build();
-    }
-}
-```
-
-### 4.4 JWT 認証インターセプター
-
-```java
-/**
- * JWT 認証インターセプター
- * リクエストヘッダーの Authorization token を検証
- *
- * @author cuckoom
- */
-@Component
-@Slf4j
-public class JwtAuthInterceptor implements HandlerInterceptor {
-
-    @Resource
-    private JwtTokenProvider jwtTokenProvider;
-
-    private static final String AUTH_HEADER = "Authorization";
-    private static final String TOKEN_PREFIX = "Bearer ";
-
-    @Override
-    public boolean preHandle(HttpServletRequest request,
-                             HttpServletResponse response,
-                             Object handler) {
-        // ログインインターフェースとコールバックインターフェースをパス
-        String uri = request.getRequestURI();
-        if (uri.contains("/api/auth/") || uri.contains("/api/wecom/callback/")) {
-            return true;
-        }
-
-        String header = request.getHeader(AUTH_HEADER);
-        if (header == null || !header.startsWith(TOKEN_PREFIX)) {
-            sendError(response, 401, "認証情報が不足しています");
-            return false;
-        }
-
-        String token = header.substring(TOKEN_PREFIX.length());
-        try {
-            Claims claims = jwtTokenProvider.parseToken(token);
-            Long userId = claims.get("userId", Long.class);
-            String wecomUserId = claims.get("wecomUserId", String.class);
-
-            // ユーザー情報を request に格納し、Controller で使用可能に
-            request.setAttribute("currentUserId", userId);
-            request.setAttribute("currentWecomUserId", wecomUserId);
-
-            return true;
-        } catch (ExpiredJwtException e) {
-            sendError(response, 401, "token が期限切れです、再ログインしてください");
-            return false;
-        } catch (Exception e) {
-            log.warn("JWT 検証失敗", e);
-            sendError(response, 401, "無効な認証情報です");
-            return false;
-        }
-    }
-
-    private void sendError(HttpServletResponse response, int code, String msg) {
-        response.setStatus(code);
-        response.setContentType("application/json;charset=UTF-8");
-        try {
-            response.getWriter().write(JSONUtil.toJsonStr(Result.fail(code, msg)));
-        } catch (IOException e) {
-            log.error("エラーレスポンスの書き込みに失敗", e);
-        }
-    }
-}
-```
-
-> 💡 **H5 モードとの違い**：H5 モードでは OAuth2 ウェブ認可を使用し、認可リンクの構築 -> ユーザーの同意 -> リダイレクトコールバック -> バックエンドでの userid 取得というフローになり、複数回のページジャンプが発生します。ミニプログラムモードでは `wx.qyLogin` で1ステップで code を取得し、バックエンドで直接 userid と交換できるため、ユーザーの認知が不要で、より良い体験を提供します。
-
-## 五、勤怠打刻機能の実装
-
-### 5.1 バックエンド API 連携
-
-#### 5.1.1 access_token 管理
-
-access_token は企業WeChat API のグローバルチケットであり、すべてのサーバー側 API 呼び出しで付与する必要があります。
-
-**取得インターフェース**：
-
-```
-GET https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=CORPID&corpsecret=SECRET
-```
-
-**レスポンス**：
-
-```json
-{
-  "errcode": 0,
-  "errmsg": "ok",
-  "access_token": "***",
-  "expires_in": 7200
-}
-```
-
-**重要な戦略**：
-- 有効期限は7200秒（2時間）、事前更新が必要
-- 同一アプリケーションの有効な access_token は一意、重複取得すると古い token が無効になる
-- **サーバー側で取得が必須**、フロントエンドで直接呼び出してはならない（secret が漏洩する）
-- Redis キャッシュの使用を推奨、有効期限を7100秒に設定（100秒の余裕を残す）
-- 複数インスタンスデプロイでは分散ロックで並行更新を防止
-
-**SpringBoot Token 管理器**：
-
-```java
-/**
- * 企業WeChat access_token 管理器
- * Redis キャッシュ + 分散ロックで並行更新を防止
- *
- * @author cuckoom
- */
-@Component
-@Slf4j
-public class WecomTokenManager {
-
-    private static final String TOKEN_CACHE_KEY = "wecom:access_token";
-    private static final String TOKEN_LOCK_KEY = "wecom:access_token:lock";
-    private static final long TOKEN_EXPIRE_SECONDS = 7100;
-
-    @Value("${wecom.corpid}")
-    private String corpId;
-
-    @Value("${wecom.secret}")
-    private String secret;
-
-    @Resource
-    private StringRedisTemplate redisTemplate;
-
-    @Resource
-    private RestTemplate restTemplate;
-
-    /**
-     * access_token を取得（ダブルチェック + 分散ロック）
-     */
-    public String getAccessToken() {
-        // 1. まずキャッシュを確認
-        String cached = redisTemplate.opsForValue().get(TOKEN_CACHE_KEY);
-        if (StrUtil.isNotBlank(cached)) {
-            return cached;
-        }
-
-        // 2. 分散ロックを取得
-        Boolean locked = redisTemplate.opsForValue()
-                .setIfAbsent(TOKEN_LOCK_KEY, "1", 10, TimeUnit.SECONDS);
-        if (Boolean.FALSE.equals(locked)) {
-            // ロック取得失敗、待機してリトライ
-            return waitForToken();
-        }
-
-        try {
-            // 3. ダブルチェック
-            cached = redisTemplate.opsForValue().get(TOKEN_CACHE_KEY);
-            if (StrUtil.isNotBlank(cached)) {
-                return cached;
-            }
-
-            // 4. 企業WeChat API を呼び出して更新
-            return refreshTokenFromWecom();
-        } finally {
-            // 5. ロック解放
-            redisTemplate.delete(TOKEN_LOCK_KEY);
-        }
-    }
-
-    /**
-     * 企業WeChat API を呼び出して新規 token を取得
-     */
-    private String refreshTokenFromWecom() {
-        String url = String.format(
-                "https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=%s&corpsecret=%s",
-                corpId, secret
-        );
-
-        JSONObject response = restTemplate.getForObject(url, JSONObject.class);
-        if (response == null || response.getIntValue("errcode") != 0) {
-            throw new BusinessException(ErrorCode.WECOM_API_ERROR,
-                    "access_token の取得に失敗: " + (response == null ? "null" : response.getString("errmsg")));
-        }
-
-        String accessToken = response.getString("access_token");
-        redisTemplate.opsForValue().set(
-                TOKEN_CACHE_KEY, accessToken,
-                TOKEN_EXPIRE_SECONDS, TimeUnit.SECONDS
-        );
-
-        log.info("企業WeChat access_token の更新に成功");
-        return accessToken;
-    }
-
-    /**
-     * 他インスタンスの token 更新を待機
-     */
-    private String waitForToken() {
-        for (int i = 0; i < 5; i++) {
-            try {
-                Thread.sleep(200);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-            String token = redisTemplate.opsForValue().get(TOKEN_CACHE_KEY);
-            if (StrUtil.isNotBlank(token)) {
-                return token;
-            }
-        }
-        throw new BusinessException(ErrorCode.WECOM_API_ERROR, "access_token の取得がタイムアウト");
-    }
-}
-```
-
-#### 5.1.2 アドレス帳管理
-
-アドレス帳 API を使用して企業の組織構造と従業員情報を同期できます。
-
-**部門リストの取得**：
-
-```
-GET https://qyapi.weixin.qq.com/cgi-bin/department/list?access_token=TOKEN&id=0
-```
-
-**部門メンバー詳細の取得**：
-
-```
-GET https://qyapi.weixin.qq.com/cgi-bin/user/list?access_token=TOKEN&department_id=1&fetch_child=1
-```
-
-**レスポンス例**：
-
-```json
-{
-  "errcode": 0,
-  "errmsg": "ok",
-  "userlist": [
-    {
-      "userid": "zhangsan",
-      "name": "張三",
-      "department": [1, 2],
-      "position": "プロダクトマネージャー",
-      "mobile": "13800138000",
-      "email": "zhangsan@company.com",
-      "status": 1,
-      "avatar": "https://..."
-    }
-  ]
-}
-```
-
-**同期戦略**：毎日早朝にアドレス帳のフル同期を1回実行し、同時にアドレス帳変更コールバック（後述のコールバック章节を参照）を設定して、増分リアルタイム同期を実現することを推奨します。
-
-#### 5.1.3 リクエストユーティリティのカプセル化
-
-ミニプログラム側で統一リクエストユーティリティをカプセル化し、JWT token を自動注入します：
-
-```typescript
-// utils/request.ts
-
-interface RequestOptions {
-  url: string;
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  data?: Record<string, any>;
-  header?: Record<string, string>;
-}
-
-interface ApiResponse<T = any> {
-  code: number;
-  message: string;
-  data: T;
-}
-
-const BASE_URL = 'https://api.attendance.yourcompany.com';
-
-export async function request<T = any>(options: RequestOptions): Promise<T> {
-  const app = getApp<AppData>();
-
-  const header: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...options.header,
-  };
-
-  // JWT token を自動注入
-  const token = app.getServerToken();
-  if (token) {
-    header['Authorization'] = `Bearer ${token}`;
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    wx.request({
-      url: `${BASE_URL}${options.url}`,
-      method: options.method || 'GET',
-      data: options.data,
-      header,
-      success: (res) => {
-        if (res.statusCode === 401) {
-          // token 期限切れ、再ログイン
-          app.qyLogin();
-          reject(new Error('ログインの有効期限が切れました'));
-          return;
-        }
-        if (res.statusCode === 200) {
-          const body = res.data as ApiResponse<T>;
-          if (body.code === 0) {
-            resolve(body.data);
-          } else {
-            wx.showToast({ title: body.message || 'リクエスト失敗', icon: 'error' });
-            reject(new Error(body.message));
-          }
-        } else {
-          reject(new Error(`HTTP ${res.statusCode}`));
-        }
-      },
-      fail: (err) => {
-        wx.showToast({ title: 'ネットワークエラー', icon: 'error' });
-        reject(err);
-      },
-    });
-  });
-}
-```
-
-### 5.2 位置情報ベースの打刻
-
-位置情報は勤怠管理システムの中核機能です。ミニプログラムは `wx.getLocation` で直接デバイスの位置情報を取得でき、JS-SDK 署名検証は不要です（H5 モードでは必要）。
-
-#### 5.2.1 ミニプログラム側の実装
-
-```typescript
-// utils/location.ts
-
-interface LocationInfo {
-  latitude: number;
-  longitude: number;
-  accuracy: number;  // 位置情報精度（メートル）
-  speed: number;
-}
-
-/**
- * 現在の位置情報を取得
- * app.json で requiredPrivateInfos: ["getLocation"] の宣言が必要
- */
-export async function getCurrentLocation(): Promise<LocationInfo> {
-  // 位置情報権限を確認
-  const hasPermission = await checkLocationPermission();
-  if (!hasPermission) {
-    const granted = await requestLocationPermission();
-    if (!granted) {
-      throw new Error('打刻機能を使用するには位置情報権限を許可してください');
-    }
-  }
-
-  // 高精度位置情報モード
-  return new Promise((resolve, reject) => {
-    wx.getLocation({
-      type: 'gcj02',
-      altitude: true,
-      isHighAccuracy: true,
-      highAccuracyExpireTime: 5000,
-      success: (res) => {
-        resolve({
-          latitude: res.latitude,
-          longitude: res.longitude,
-          accuracy: res.accuracy,
-          speed: res.speed,
-        });
-      },
-      fail: (err) => {
-        console.error('位置情報の取得に失敗', err);
-        reject(new Error('位置情報の取得に失敗、GPS が有効か確認してください'));
-      },
-    });
-  });
-}
-
-/**
- * 位置情報権限の確認
- */
-function checkLocationPermission(): Promise<boolean> {
-  return new Promise((resolve) => {
-    wx.getSetting({
-      success: (res) => {
-        resolve(res.authSetting['scope.userLocation'] === true);
-      },
-      fail: () => resolve(false),
-    });
-  });
-}
-
-/**
- * 位置情報権限のリクエスト
- */
-function requestLocationPermission(): Promise<boolean> {
-  return new Promise((resolve) => {
-    wx.authorize({
-      scope: 'scope.userLocation',
-      success: () => resolve(true),
-      fail: () => {
-        // ユーザーを設定ページに誘導
-        wx.showModal({
-          title: '位置情報権限',
-          content: '打刻には位置情報権限が必要です、設定で有効にしてください',
-          confirmText: '設定へ',
-          success: (res) => {
-            if (res.confirm) {
-              wx.openSetting({
-                success: (settingRes) => {
-                  resolve(settingRes.authSetting['scope.userLocation'] === true);
-                },
-                fail: () => resolve(false),
-              });
-            } else {
-              resolve(false);
-            }
-          },
-        });
-      },
-    });
-  });
-}
-
-/**
- * 2点間の距離を計算（Haversine 公式）
- */
-export function calculateDistance(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number,
-): number {
-  const R = 6371000; // 地球の半径（メートル）
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
-```
-
-#### 5.2.2 打刻ページ
-
-```typescript
-// pages/index/index.ts
-
-import { getCurrentLocation, calculateDistance } from '../../utils/location';
-import { request } from '../../utils/request';
-
-interface CheckinPageData {
-  currentDate: string;
-  currentTime: string;
-  locationText: string;
-  distance: number;
-  inRange: boolean;
-  loading: boolean;
-}
-
-// 会社の打刻範囲設定
-const COMPANY_LAT = 30.2741;
-const COMPANY_LNG = 120.1551;
-const ALLOWED_RADIUS = 200; // 打刻許可半径（メートル）
-
-Page<CheckinPageData, WeApp.IAnyObject>({
-  data: {
-    currentDate: '',
-    currentTime: '',
-    locationText: '',
-    distance: 0,
-    inRange: false,
-    loading: false,
+// src/app/app.routes.ts
+export const APP_ROUTES: Routes = [
+  {
+    path: 'mobile',
+    loadChildren: () => import('./mobile/mobile.routes').then(m => m.MOBILE_ROUTES),
   },
-
-  onShow() {
-    this.updateTime();
-    setInterval(this.updateTime, 1000);
-  },
-
-  updateTime() {
-    const now = new Date();
-    this.setData({
-      currentDate: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
-      currentTime: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`,
-    });
-  },
-
-  async handleCheckin() {
-    if (this.data.loading) return;
-    this.setData({ loading: true });
-
-    try {
-      // 1. 位置情報を取得
-      const location = await getCurrentLocation();
-
-      // 2. 距離を計算
-      const distance = calculateDistance(
-        location.latitude,
-        location.longitude,
-        COMPANY_LAT,
-        COMPANY_LNG,
-      );
-
-      const inRange = distance <= ALLOWED_RADIUS;
-
-      this.setData({
-        distance: Math.round(distance),
-        inRange,
-        locationText: inRange ? '打刻範囲内です' : `会社まで ${Math.round(distance)} メートル`,
-      });
-
-      if (!inRange) {
-        wx.showModal({
-          title: '打刻範囲外',
-          content: `現在会社まで ${Math.round(distance)} メートル、許可範囲 ${ALLOWED_RADIUS} メートルを超過しています。`,
-          showCancel: false,
-        });
-        return;
-      }
-
-      // 3. 打刻を送信
-      const result = await request<{ checkinId: string; time: string }>({
-        url: '/api/checkin/submit',
-        method: 'POST',
-        data: {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          accuracy: location.accuracy,
-          distance: Math.round(distance),
-          checkinTime: new Date().toISOString(),
-        },
-      });
-
-      wx.showToast({ title: '打刻成功', icon: 'success' });
-      console.log('打刻結果', result);
-    } catch (err) {
-      console.error('打刻失敗', err);
-      wx.showToast({
-        title: err.message || '打刻失敗',
-        icon: 'error',
-      });
-    } finally {
-      this.setData({ loading: false });
-    }
-  },
-});
+  // ...PC 管理画面のルート
+];
 ```
+## 4. OAuth2 シームレス自動ログイン（免登）の完全な流れ
 
-#### 5.2.3 バックエンド打刻インターフェース
+これが連携全体の中核です。目指す効果は、従業員が企業微信でアプリアイコン（または承認メッセージカード）をタップすると、ページが開く過程で**ログインページも確認ボタンも一切表示されず**、1〜2秒後には直接業務ページに着陸し、しかもバックエンドが「彼がシステム内の誰なのか」をすでに把握している状態です。
 
-```java
-/**
- * 勤怠打刻 Controller
- *
- * @author cuckoom
- */
-@RestController
-@RequestMapping("/api/checkin")
-@Slf4j
-public class CheckinController {
+### 4.1 認可方式の選定：snsapi_base
 
-    @Resource
-    private CheckinService checkinService;
+企業微信の Web 認可は2種類の scope をサポートしています：
 
-    /**
-     * 打刻を送信
-     *
-     * @param request 打刻リクエスト
-     * @param userId 現在のユーザー ID（JWT インターセプターから注入）
-     */
-    @PostMapping("/submit")
-    public Result<CheckinVO> submit(
-            @RequestBody @Valid CheckinDTO request,
-            HttpServletRequest httpRequest
-    ) {
-        Long userId = (Long) httpRequest.getAttribute("currentUserId");
-        String wecomUserId = (String) httpRequest.getAttribute("currentWecomUserId");
+| scope | 確認ダイアログ | 取得できるもの | 用途 |
+|-------|-----------|-----------|------|
+| `snsapi_base` | **シームレス、ダイアログ一切なし** | メンバーの userid のみ（バックエンドで交換） | 社内アプリの自動ログイン、**本記事で採用** |
+| `snsapi_privateinfo` | ユーザーの手動確認が必要 | userid ＋ 機密情報（携帯番号／メール等、メンバーの認可が必要） | 追加のプライバシー項目収集が必要なごく少数のケース |
 
-        log.info("ユーザー {} が打刻を送信、位置=({},{})",
-                wecomUserId, request.getLatitude(), request.getLongitude());
+社内自作アプリで、アプリの表示範囲に利用者がすでに含まれている場合、`snsapi_base` は企業微信クライアント内では完全にシームレスです——これこそが自動ログインの基盤です。この段階で携帯番号やメールを取得する必要はなく（それらはサーバー側の連絡先 API で userid から照会すればよい）、すべて `snsapi_base` を使用します。
 
-        CheckinVO vo = checkinService.checkin(userId, request);
-        return Result.success(vo);
-    }
-
-    /**
-     * 今日の打刻記録を照会
-     */
-    @GetMapping("/today")
-    public Result<List<CheckinVO>> todayRecords(HttpServletRequest httpRequest) {
-        Long userId = (Long) httpRequest.getAttribute("currentUserId");
-        return Result.success(checkinService.getTodayRecords(userId));
-    }
-}
-```
-
-```java
-/**
- * 勤怠打刻 Service
- *
- * @author cuckoom
- */
-@Service
-@Slf4j
-public class CheckinService {
-
-    @Value("${attendance.company.latitude}")
-    private double companyLat;
-
-    @Value("${attendance.company.longitude}")
-    private double companyLng;
-
-    @Value("${attendance.allowed-radius:200}")
-    private double allowedRadius;
-
-    @Resource
-    private CheckinRecordMapper checkinMapper;
-
-    @Resource
-    private WecomMessageService messageService;
-
-    /**
-     * 打刻
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public CheckinVO checkin(Long userId, CheckinDTO dto) {
-        // 1. 距離検証
-        double distance = calculateDistance(
-                dto.getLatitude(), dto.getLongitude(),
-                companyLat, companyLng
-        );
-
-        if (distance > allowedRadius) {
-            throw new BusinessException(ErrorCode.OUT_OF_RANGE,
-                    String.format("打刻範囲外です、会社まで %.0f メートル", distance));
-        }
-
-        // 2. 重複打刻防止（同一タイプ5分以内の重複不可）
-        String checkinType = determineCheckinType(LocalDateTime.now());
-        CheckinRecord existing = checkinMapper.findRecentRecord(
-                userId, checkinType, 5
-        );
-        if (existing != null) {
-            throw new BusinessException(ErrorCode.DUPLICATE_CHECKIN,
-                    "5分以内に打刻済みです、重複打刻しないでください");
-        }
-
-        // 3. 打刻記録を保存
-        CheckinRecord record = new CheckinRecord();
-        record.setUserId(userId);
-        record.setCheckinType(checkinType);
-        record.setLatitude(dto.getLatitude());
-        record.setLongitude(dto.getLongitude());
-        record.setAccuracy(dto.getAccuracy());
-        record.setDistance(Math.round(distance));
-        record.setCheckinTime(LocalDateTime.now());
-        record.setCreateTime(LocalDateTime.now());
-        checkinMapper.insert(record);
-
-        // 4. 打刻成功通知をプッシュ
-        messageService.sendCheckinNotification(record);
-
-        return CheckinVO.builder()
-                .checkinId(record.getId().toString())
-                .time(record.getCheckinTime().toString())
-                .type(checkinType)
-                .distance(Math.round(distance))
-                .build();
-    }
-
-    private static double calculateDistance(double lat1, double lng1,
-                                            double lat2, double lng2) {
-        final double R = 6371000;
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLng = Math.toRadians(lng2 - lng1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
-                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        return 2 * R * Math.asin(Math.sqrt(a));
-    }
-
-    private String determineCheckinType(LocalDateTime now) {
-        int hour = now.getHour();
-        if (hour < 12) {
-            return "CLOCK_IN";  // 出勤打刻
-        } else {
-            return "CLOCK_OUT"; // 退勤打刻
-        }
-    }
-}
-```
-
-> 💡 **H5 モードとの比較**：H5 モードでは JS-SDK の `wx.getLocation` で位置情報を取得する際、先に `wx.config` 署名検証が必要で、iOS/Android で署名 URL の処理が異なり、多くの落とし穴があります。ミニプログラムモードでは `wx.getLocation` を直接呼び出し、署名不要、API が統一され、開発体験が顕著に向上します。
-
-### 5.3 写真撮影による打刻
-
-写真撮影による打刻は、現場の写真による証明が必要なシーン（外勤打刻、再打刻申請など）で使用されます。
-
-#### 5.3.1 ミニプログラム側の実装
-
-```typescript
-// pages/index/index.ts （写真撮影打刻部分）
-
-import { request } from '../../utils/request';
-
-/**
- * 写真撮影打刻
- * wx.chooseMedia で写真を取得（推奨、非推奨となった wx.chooseImage の代替）
- */
-async handlePhotoCheckin() {
-  if (this.data.loading) return;
-  this.setData({ loading: true });
-
-  try {
-    // 1. 写真撮影
-    const media = await this.takePhoto();
-    if (!media.tempFilePath) {
-      throw new Error('写真撮影に失敗');
-    }
-
-    // 2. 位置情報を取得（写真打刻でも位置検証が必要）
-    const location = await getCurrentLocation();
-    const distance = calculateDistance(
-      location.latitude,
-      location.longitude,
-      COMPANY_LAT,
-      COMPANY_LNG,
-    );
-
-    // 3. 写真をサーバーにアップロード
-    const uploadResult = await this.uploadPhoto(
-      media.tempFilePath,
-      location.latitude,
-      location.longitude,
-    );
-
-    wx.showToast({ title: '写真打刻成功', icon: 'success' });
-    console.log('アップロード結果', uploadResult);
-  } catch (err) {
-    console.error('写真打刻失敗', err);
-    wx.showToast({ title: err.message || '写真打刻失敗', icon: 'error' });
-  } finally {
-    this.setData({ loading: false });
-  }
-}
-
-/**
- * カメラで写真撮影
- */
-private takePhoto(): Promise<{ tempFilePath: string }> {
-  return new Promise((resolve, reject) => {
-    wx.chooseMedia({
-      count: 1,
-      mediaType: ['image'],
-      sourceType: ['camera'],     // 撮影のみ、アルバム選択不可（不正防止）
-      camera: 'back',              // バックカメラ
-      sizeType: ['compressed'],    // 圧縮アップロード
-      success: (res) => {
-        if (res.tempFiles && res.tempFiles.length > 0) {
-          resolve({ tempFilePath: res.tempFiles[0].tempFilePath });
-        } else {
-          reject(new Error('写真を取得できませんでした'));
-        }
-      },
-      fail: (err) => {
-        reject(new Error('撮影がキャンセルまたは失敗しました'));
-      },
-    });
-  });
-}
-
-/**
- * 写真をサーバーにアップロード
- */
-private uploadPhoto(filePath: string, latitude: number, longitude: number): Promise<any> {
-  const app = getApp<AppData>();
-  const token = app.getServerToken();
-
-  return new Promise((resolve, reject) => {
-    wx.uploadFile({
-      url: 'https://api.attendance.yourcompany.com/api/checkin/photo',
-      filePath,
-      name: 'photo',
-      formData: {
-        latitude: String(latitude),
-        longitude: String(longitude),
-        checkinTime: new Date().toISOString(),
-      },
-      header: {
-        Authorization: token ? `Bearer ${token}` : '',
-      },
-      success: (res) => {
-        if (res.statusCode === 200) {
-          const body = JSON.parse(res.data);
-          if (body.code === 0) {
-            resolve(body.data);
-          } else {
-            reject(new Error(body.message || 'アップロード失敗'));
-          }
-        } else {
-          reject(new Error(`アップロード失敗 HTTP ${res.statusCode}`));
-        }
-      },
-      fail: reject,
-    });
-  });
-}
-```
-
-#### 5.3.2 バックエンド写真アップロードインターフェース
-
-```java
-/**
- * 写真撮影打刻 Controller
- *
- * @author cuckoom
- */
-@RestController
-@RequestMapping("/api/checkin")
-@Slf4j
-public class CheckinPhotoController {
-
-    @Resource
-    private CheckinService checkinService;
-
-    @Resource
-    private FileStorageService fileStorageService;
-
-    /**
-     * 写真撮影打刻アップロード
-     *
-     * @param file 写真ファイル
-     * @param latitude 緯度
-     * @param longitude 経度
-     */
-    @PostMapping("/photo")
-    public Result<CheckinVO> photoCheckin(
-            @RequestParam("photo") MultipartFile file,
-            @RequestParam("latitude") double latitude,
-            @RequestParam("longitude") double longitude,
-            HttpServletRequest httpRequest
-    ) {
-        Long userId = (Long) httpRequest.getAttribute("currentUserId");
-
-        // 1. ファイルを検証
-        if (file.isEmpty()) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "写真は空にできません");
-        }
-        if (file.getSize() > 5 * 1024 * 1024) {
-            throw new BusinessException(ErrorCode.FILE_TOO_LARGE, "写真は5MBを超えられません");
-        }
-        String contentType = file.getContentType();
-        if (contentType == null || !contentType.startsWith("image/")) {
-            throw new BusinessException(ErrorCode.FILE_TYPE_ERROR, "画像形式のみサポート");
-        }
-
-        // 2. 写真を内部ネットワークに保存（外部非公開）
-        String photoPath = fileStorageService.store(file, "checkin/" + userId);
-
-        // 3. 打刻記録を作成
-        CheckinDTO dto = new CheckinDTO();
-        dto.setLatitude(latitude);
-        dto.setLongitude(longitude);
-        dto.setPhotoPath(photoPath);
-
-        CheckinVO vo = checkinService.photoCheckin(userId, dto);
-        return Result.success(vo);
-    }
-}
-```
-
-### 5.4 QRコードスキャンによる打刻
-
-QRコードスキャンによる打刻は、席のチェックイン、会議室のチェックインなどのシーンに適用され、ユーザーが固定のQRコードをスキャンして打刻を完了します。
-
-#### 5.4.1 ミニプログラム側の実装
-
-```typescript
-// pages/scan/index.ts
-
-import { request } from '../../utils/request';
-
-interface ScanPageData {
-  scanning: boolean;
-  result: string;
-}
-
-Page<ScanPageData, WeApp.IAnyObject>({
-  data: {
-    scanning: false,
-    result: '',
-  },
-
-  async handleScan() {
-    if (this.data.scanning) return;
-    this.setData({ scanning: true });
-
-    try {
-      // 1. スキャンを呼び出し
-      const res = await this.scanQRCode();
-      const qrContent = res.result;
-
-      if (!qrContent) {
-        throw new Error('スキャン内容が空です');
-      }
-
-      // 2. QRコード内容を検証（特定のプレフィックスを含む必要あり）
-      if (!qrContent.startsWith('wecom-attendance://')) {
-        throw new Error('勤怠QRコードではありません、打刻できません');
-      }
-
-      // 3. token を抽出
-      const qrToken = qrContent.replace('wecom-attendance://', '');
-
-      // 4. 同時に位置情報を取得（不正防止：スキャン+位置情報の二重検証）
-      const location = await getCurrentLocation();
-
-      // 5. スキャン打刻を送信
-      const result = await request<{ checkinId: string; time: string }>({
-        url: '/api/checkin/scan',
-        method: 'POST',
-        data: {
-          qrToken,
-          latitude: location.latitude,
-          longitude: location.longitude,
-        },
-      });
-
-      this.setData({ result: '打刻成功' });
-      wx.showToast({ title: 'スキャン打刻成功', icon: 'success' });
-      console.log('スキャン打刻結果', result);
-    } catch (err) {
-      console.error('スキャン打刻失敗', err);
-      this.setData({ result: err.message || 'スキャン打刻失敗' });
-      wx.showToast({ title: err.message || 'スキャン打刻失敗', icon: 'error' });
-    } finally {
-      this.setData({ scanning: false });
-    }
-  },
-
-  /**
-   * wx.scanCode でQRコードをスキャン
-   */
-  scanQRCode(): Promise<{ result: string }> {
-    return new Promise((resolve, reject) => {
-      wx.scanCode({
-        onlyFromCamera: true,   // カメラからのスキャンのみ許可（スクリーンショット不正防止）
-        scanType: ['qrCode'],   // QRコードのみスキャン
-        success: resolve,
-        fail: () => {
-          reject(new Error('スキャンがキャンセルまたは失敗しました'));
-        },
-      });
-    });
-  },
-});
-```
-
-#### 5.4.2 バックエンドスキャン打刻インターフェース
-
-```java
-/**
- * スキャン打刻 Controller
- *
- * @author cuckoom
- */
-@RestController
-@RequestMapping("/api/checkin")
-@Slf4j
-public class ScanCheckinController {
-
-    @Resource
-    private CheckinService checkinService;
-
-    /**
-     * スキャン打刻
-     *
-     * @param request スキャン打刻リクエスト
-     */
-    @PostMapping("/scan")
-    public Result<CheckinVO> scanCheckin(
-            @RequestBody @Valid ScanCheckinDTO request,
-            HttpServletRequest httpRequest
-    ) {
-        Long userId = (Long) httpRequest.getAttribute("currentUserId");
-
-        log.info("ユーザー {} がスキャン打刻、qrToken={}", userId, request.getQrToken());
-
-        CheckinVO vo = checkinService.scanCheckin(userId, request);
-        return Result.success(vo);
-    }
-}
-```
-
-```java
-/**
- * スキャン打刻 Service 実装
- *
- * @author cuckoom
- */
-@Service
-@Slf4j
-public class ScanCheckinServiceImpl implements CheckinService {
-
-    @Resource
-    private QrTokenMapper qrTokenMapper;
-
-    @Resource
-    private CheckinRecordMapper checkinMapper;
-
-    @Resource
-    private WecomMessageService messageService;
-
-    private static final double COMPANY_LAT = 30.2741;
-    private static final double COMPANY_LNG = 120.1551;
-    private static final double ALLOWED_RADIUS = 200;
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public CheckinVO scanCheckin(Long userId, ScanCheckinDTO dto) {
-        // 1. QRコード token を検証
-        QrToken qrToken = qrTokenMapper.findByToken(dto.getQrToken());
-        if (qrToken == null) {
-            throw new BusinessException(ErrorCode.INVALID_QR_TOKEN, "無効な打刻QRコードです");
-        }
-        if (qrToken.getExpireTime().isBefore(LocalDateTime.now())) {
-            throw new BusinessException(ErrorCode.EXPIRED_QR_TOKEN, "打刻QRコードの有効期限が切れています");
-        }
-        if (qrToken.getStatus() == 0) {
-            throw new BusinessException(ErrorCode.QR_TOKEN_DISABLED, "打刻QRコードは停止されています");
-        }
-
-        // 2. 位置情報検証
-        double distance = calculateDistance(
-                dto.getLatitude(), dto.getLongitude(),
-                COMPANY_LAT, COMPANY_LNG
-        );
-        if (distance > ALLOWED_RADIUS) {
-            throw new BusinessException(ErrorCode.OUT_OF_RANGE,
-                    String.format("打刻範囲外です、会社まで %.0f メートル", distance));
-        }
-
-        // 3. 重複打刻防止
-        CheckinRecord existing = checkinMapper.findRecentRecord(userId, "SCAN", 5);
-        if (existing != null) {
-            throw new BusinessException(ErrorCode.DUPLICATE_CHECKIN, "5分以内にスキャン打刻済みです");
-        }
-
-        // 4. 打刻記録を保存
-        CheckinRecord record = new CheckinRecord();
-        record.setUserId(userId);
-        record.setCheckinType("SCAN");
-        record.setQrTokenId(qrToken.getId());
-        record.setLatitude(dto.getLatitude());
-        record.setLongitude(dto.getLongitude());
-        record.setDistance(Math.round(distance));
-        record.setCheckinTime(LocalDateTime.now());
-        record.setCreateTime(LocalDateTime.now());
-        checkinMapper.insert(record);
-
-        // 5. 通知をプッシュ
-        messageService.sendCheckinNotification(record);
-
-        return CheckinVO.builder()
-                .checkinId(record.getId().toString())
-                .time(record.getCheckinTime().toString())
-                .type("SCAN")
-                .distance(Math.round(distance))
-                .build();
-    }
-
-    // ... その他のメソッドは省略
-}
-```
-
-## 六、メッセージプッシュとコールバック
-
-### 6.1 アプリメッセージプッシュ
-
-メッセージプッシュは企業WeChatアプリの重要な機能であり、勤怠リマインド、申請通知などのシーンで使用できます。
-
-**アプリメッセージ送信**：
+### 4.2 全体のシーケンス
 
 ```
-POST https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=TOKEN
+WeComクライアント     H5 フロント(WebView)     業務バックエンド          WeComサーバー
+    │                   │                     │                     │
+    │ アプリホームを開く  │                     │                     │
+    │──────────────────▶│                     │                     │
+    │                   │ ルートガード：token なし│                    │
+    │                   │ 302 認可URLへ遷移     │                     │
+    │◀──────────────────│                     │                     │
+    │ シームレス認可(無感覚)│                  │                     │
+    │───────────────────────────────────────▶│                     │
+    │ 302 callback?code=xxx&state=yyy へ戻る  │                     │
+    │──────────────────▶│                     │                     │
+    │                   │ POST /auth/wecom/login {code}             │
+    │                   │────────────────────▶│                     │
+    │                   │                     │ gettoken            │
+    │                   │                     │────────────────────▶│
+    │                   │                     │◀────────────────────│
+    │                   │                     │ auth/getuserinfo    │
+    │                   │                     │  (code→userid)      │
+    │                   │                     │────────────────────▶│
+    │                   │                     │◀────────────────────│
+    │                   │                     │ userid→システムアカウント照会/作成 │
+    │                   │                     │ JWT を発行           │
+    │                   │◀────────────────────│                     │
+    │                   │ token を保存、目的ページへ遷移 │           │
+    │                   │ 以降のリクエストに JWT を付与 │           │
 ```
 
-**テキストメッセージ**：
+2つの重要点に注意してください：
 
-```json
-{
-  "touser": "zhangsan|lisi",
-  "toparty": "2|3",
-  "totag": "tag1",
-  "msgtype": "text",
-  "agentid": 1000002,
-  "text": {
-    "content": "本日の出勤打刻時間は 09:00 です、時間通りに打刻してください。"
-  },
-  "duplicate_check_interval": 1800
-}
-```
+1. **code の交換はバックエンドでのみ行う**：フロントエンドが直接企業微信 API を呼ぶことは絶対にありません（secret が露出します）。フロントが担うのは「遷移の誘導」と「戻り URL 上の code をバックエンドに渡す」ことだけです。
+2. **認可 URL の組み立てはフロントでもバックエンドでも構いません**が、`state` による CSRF 対策と「ログイン後に元のページへ戻る」ロジックは自分で管理する必要があります。
 
-**テキストカードメッセージ**（推奨、アプリページへジャンプ可能）：
+### 4.3 ステップ1：認可 URL を構築して遷移する
 
-```json
-{
-  "touser": "zhangsan",
-  "msgtype": "textcard",
-  "agentid": 1000002,
-  "textcard": {
-    "title": "勤怠リマインド",
-    "description": "出勤打刻の締切まであと15分です、時間通りに打刻してください。",
-    "url": "https://attendance.yourcompany.com/checkin",
-    "btntxt": "打刻に移動"
-  }
-}
-```
-
-**テンプレートカードメッセージ**（インタラクティブボタンをサポート、申請通知に適用）：
-
-```json
-{
-  "touser": "zhangsan",
-  "msgtype": "template_card",
-  "agentid": 1000002,
-  "template_card": {
-    "card_type": "button_interaction",
-    "source": {
-      "desc": "勤怠管理システム"
-    },
-    "main_title": {
-      "title": "再打刻申請の承認",
-      "desc": "李四が2026-07-08午前の再打刻を申請"
-    },
-    "sub_title_text": "再打刻理由：打刻忘れ、席の監視カメラ映像で証明あり",
-    "button_list": [
-      {
-        "text": "承認",
-        "style": 1,
-        "key": "approve"
-      },
-      {
-        "text": "却下",
-        "style": 2,
-        "key": "reject"
-      }
-    ],
-    "task_id": "task_20260708_001"
-  }
-}
-```
-
-> 💡 **ミニプログラムジャンプ**：テキストカードとテンプレートカードの `url` フィールドはミニプログラムジャンプパスをサポート（例：`#wecom-miniprogram://pages/index/index`）、ユーザーがメッセージをクリックすると H5 リンクではなくミニプログラムの対応ページを直接開きます。
-
-**SpringBoot メッセージプッシュ実装**：
-
-```java
-/**
- * 企業WeChatメッセージプッシュ Service
- *
- * @author cuckoom
- */
-@Service
-@Slf4j
-public class WecomMessageService {
-
-    @Resource
-    private WecomTokenManager tokenManager;
-
-    @Resource
-    private RestTemplate restTemplate;
-
-    @Value("${wecom.agentid}")
-    private Integer agentId;
-
-    /**
-     * 打刻成功通知を送信
-     */
-    public void sendCheckinNotification(CheckinRecord record) {
-        String userid = getUserId(record.getUserId());
-        if (StrUtil.isBlank(userid)) {
-            log.warn("企業WeChat userid を取得できません、プッシュをスキップ: userId={}", record.getUserId());
-            return;
-        }
-
-        String typeText = "CLOCK_IN".equals(record.getCheckinType()) ? "出勤" : "退勤";
-        if ("SCAN".equals(record.getCheckinType())) {
-            typeText = "スキャン";
-        }
-
-        Map<String, Object> message = new HashMap<>();
-        message.put("touser", userid);
-        message.put("msgtype", "textcard");
-        message.put("agentid", agentId);
-
-        Map<String, Object> textCard = new HashMap<>();
-        textCard.put("title", "打刻成功");
-        textCard.put("description", String.format(
-                "%s打刻成功\n時間：%s\n会社まで：%dメートル",
-                typeText,
-                record.getCheckinTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
-                record.getDistance()
-        ));
-        // ミニプログラムジャンプリンク
-        textCard.put("url", "#wecom-miniprogram://pages/records/index");
-        textCard.put("btntxt", "記録を確認");
-        message.put("textcard", textCard);
-
-        sendMessage(message);
-    }
-
-    /**
-     * 勤怠リマインドを送信
-     */
-    public void sendCheckinReminder(String wecomUserId, String content) {
-        Map<String, Object> message = new HashMap<>();
-        message.put("touser", wecomUserId);
-        message.put("msgtype", "text");
-        message.put("agentid", agentId);
-
-        Map<String, Object> text = new HashMap<>();
-        text.put("content", content);
-        message.put("text", text);
-
-        sendMessage(message);
-    }
-
-    private void sendMessage(Map<String, Object> message) {
-        String accessToken = tokenManager.getAccessToken();
-        String url = "https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=" + accessToken;
-
-        try {
-            JSONObject response = restTemplate.postForObject(
-                    url, message, JSONObject.class
-            );
-            if (response != null && response.getIntValue("errcode") == 0) {
-                log.info("メッセージプッシュ成功: {}", response.getString("msgid"));
-            } else {
-                log.error("メッセージプッシュ失敗: {}", response);
-            }
-        } catch (Exception e) {
-            log.error("メッセージプッシュ例外", e);
-        }
-    }
-
-    private String getUserId(Long userId) {
-        // システムユーザーテーブルを照会し、企業WeChat userid を取得
-        return userMapper.findWecomUserIdById(userId);
-    }
-}
-```
-
-### 6.2 データコールバック
-
-企業WeChatは複数のイベントコールバックをサポートし、アドレス帳変更、アドレス帳アプリ状態変更、テンプレートカードボタンコールバックなどが含まれます。コールバックは HTTP POST で開発者が設定した URL に送信されます。
-
-#### 6.2.1 コールバックアドレスの設定
-
-企業WeChat管理コンソールで設定：
-
-```
-アプリ管理 -> 自前アプリ -> メッセージ受信 -> API受信の設定
-  -> URL: https://api.attendance.yourcompany.com/api/wecom/callback/message
-  -> Token: カスタム Token（署名検証用）
-  -> EncodingAESKey: ランダム生成（メッセージの暗号化・復号用）
-```
-
-#### 6.2.2 コールバック署名検証と復号
-
-企業WeChatのコールバックメッセージは AES 暗号化を使用しており、署名検証と復号の実装が必要です：
-
-```java
-/**
- * 企業WeChatコールバック Controller
- *
- * @author cuckoom
- */
-@RestController
-@RequestMapping("/api/wecom/callback")
-@Slf4j
-public class WecomCallbackController {
-
-    @Resource
-    private WecomCallbackService callbackService;
-
-    /**
-     * URL 検証（GET リクエスト）
-     * 企業WeChatがコールバックアドレス設定時に URL の有効性を検証
-     */
-    @GetMapping("/message")
-    public String verifyUrl(
-            @RequestParam("msg_signature") String msgSignature,
-            @RequestParam("timestamp") String timestamp,
-            @RequestParam("nonce") String nonce,
-            @RequestParam("echostr") String echoStr
-    ) {
-        log.info("企業WeChatコールバック URL 検証");
-        try {
-            return callbackService.verifyUrl(msgSignature, timestamp, nonce, echoStr);
-        } catch (Exception e) {
-            log.error("URL 検証失敗", e);
-            return "";
-        }
-    }
-
-    /**
-     * イベントコールバック受信（POST リクエスト）
-     */
-    @PostMapping(value = "/message", produces = "application/xml")
-    public String receiveCallback(
-            @RequestParam("msg_signature") String msgSignature,
-            @RequestParam("timestamp") String timestamp,
-            @RequestParam("nonce") String nonce,
-            @RequestBody String encryptedMsg
-    ) {
-        log.info("企業WeChatコールバックを受信");
-        try {
-            callbackService.handleCallback(msgSignature, timestamp, nonce, encryptedMsg);
-            return "success";
-        } catch (Exception e) {
-            log.error("コールバック処理失敗", e);
-            return "success"; // success を返し企業WeChatのリトライを防止
-        }
-    }
-}
-```
-
-#### 6.2.3 テンプレートカードボタンコールバック
-
-ユーザーがテンプレートカードメッセージのボタンをクリックした際、企業WeChatはコールバック URL にボタンイベントをプッシュします：
-
-```java
-/**
- * 企業WeChatコールバック Service
- *
- * @author cuckoom
- */
-@Service
-@Slf4j
-public class WecomCallbackService {
-
-    @Value("${wecom.callback.token}")
-    private String callbackToken;
-
-    @Value("${wecom.callback.encoding-aes-key}")
-    private String encodingAesKey;
-
-    @Value("${wecom.corpid}")
-    private String corpId;
-
-    @Resource
-    private RestTemplate restTemplate;
-
-    @Resource
-    private ApplyApprovalService approvalService;
-
-    /**
-     * コールバックイベントの処理
-     */
-    public void handleCallback(String msgSignature, String timestamp,
-                               String nonce, String encryptedMsg) {
-        // 1. メッセージを復号
-        WecomCallbackMessage message = decryptMessage(msgSignature, timestamp, nonce, encryptedMsg);
-
-        // 2. イベントタイプに応じて処理
-        String eventType = message.getEventType();
-        switch (eventType) {
-            case "template_card_event":
-                handleTemplateCardEvent(message);
-                break;
-            case "change_contact":
-                handleContactChange(message);
-                break;
-            default:
-                log.info("未処理のイベントタイプ: {}", eventType);
-        }
-    }
-
-    /**
-     * テンプレートカードボタンクリックイベントの処理
-     */
-    private void handleTemplateCardEvent(WecomCallbackMessage message) {
-        String taskId = message.getTaskId();
-        String buttonKey = message.getButtonKey();
-        String userId = message.getUserId();
-
-        log.info("テンプレートカードボタンクリック: taskId={}, buttonKey={}, userId={}",
-                taskId, buttonKey, userId);
-
-        if ("approve".equals(buttonKey)) {
-            approvalService.approve(taskId, userId);
-        } else if ("reject".equals(buttonKey)) {
-            approvalService.reject(taskId, userId);
-        }
-    }
-
-    /**
-     * アドレス帳変更の処理
-     */
-    private void handleContactChange(WecomCallbackMessage message) {
-        String changeType = message.getChangeType();
-        String userId = message.getUserId();
-
-        log.info("アドレス帳変更: type={}, userId={}", changeType, userId);
-
-        switch (changeType) {
-            case "create_user":
-                // 従業員追加：システムユーザーを作成
-                break;
-            case "update_user":
-                // 従業員更新：情報を同期
-                break;
-            case "delete_user":
-                // 従業員削除：アカウントを無効化
-                break;
-            default:
-                log.info("未処理のアドレス帳変更タイプ: {}", changeType);
-        }
-    }
-
-    /**
-     * 企業WeChatコールバックメッセージの復号
-     */
-    private WecomCallbackMessage decryptMessage(String msgSignature, String timestamp,
-                                                 String nonce, String encryptedMsg) {
-        // 署名検証
-        String calculatedSignature = Sha1Util.sha1(
-                callbackToken, timestamp, nonce, encryptedMsg
-        );
-        if (!calculatedSignature.equals(msgSignature)) {
-            throw new BusinessException(ErrorCode.SIGN_VERIFY_FAILED, "コールバック署名検証失敗");
-        }
-
-        // AES 復号
-        String decryptedXml = AesUtil.decrypt(encodingAesKey, encryptedMsg, corpId);
-        return XmlUtil.parseXml(decryptedXml, WecomCallbackMessage.class);
-    }
-}
-```
-
-### 6.3 ミニプログラムと H5 の OAuth 差異比較
-
-| 比較項目 | 企業WeChatミニプログラム | H5 アプリ |
-|--------|--------------|---------|
-| 認証エントリ | `wx.qyLogin()` API 呼び出し | OAuth2 認可リンクのページジャンプ |
-| code の来源 | `wx.qyLogin` が返す `code` | OAuth2 リダイレクトパラメータ `code` |
-| code 交換インターフェース | `jscode2session` | `getuserinfo` |
-| ユーザー認知 | 完全にサイレント、認知なし | ユーザーの同意が必要な場合あり（snsapi_base はサイレント、snsapi_privateinfo は確認が必要） |
-| 取得情報 | userid + session_key | userid（snsapi_base）または詳細情報（snsapi_privateinfo） |
-| セキュリティメカニズム | session_key で暗号化データを復号 | 追加の暗号化レイヤーなし |
-| ドメイン要件 | サーバードメイン（request ドメイン） | 信頼できるドメイン（ウェブ認可ドメイン） |
-| コールバック処理 | リダイレクトコールバック不要 | redirect_uri コールバックページで code を処理 |
-| マルチプラットフォーム一致性 | 企業WeChatが一致性を保証 | iOS/Android WebView の差異を処理する必要あり |
-
-**H5 OAuth2 認可フロー（比較参考）**：
-
-```
-ユーザーがアプリエントリをクリック
-  -> 企業WeChatが認可リンクを構築、ユーザーが認可に同意
-  -> コールバックアドレスにリダイレクト、code を付携
-  -> バックエンドが code で userid を取得
-  -> セッションを確立、ビジネス token を返却
-```
-
-**認可リンクの構築**：
+認可 URL の形式：
 
 ```
 https://open.weixin.qq.com/connect/oauth2/authorize
   ?appid=CORPID
-  &redirect_uri=https%3A%2F%2Fattendance.yourcompany.com%2Fauth%2Fcallback
+  &redirect_uri=URL_ENCODED_CALLBACK
   &response_type=code
   &scope=snsapi_base
   &agentid=AGENTID
@@ -2241,437 +411,1458 @@ https://open.weixin.qq.com/connect/oauth2/authorize
 
 | パラメータ | 説明 |
 |------|------|
-| `appid` | 企業の corpid |
-| `redirect_uri` | コールバックアドレス、信頼できるドメイン配下である必要あり、URL エンコードが必要 |
-| `scope` | `snsapi_base`（サイレント認可、userid のみ取得）または `snsapi_privateinfo`（詳細情報を取得） |
-| `agentid` | アプリの agentid |
-| `state` | CSRF 対策、そのまま返却 |
+| `appid` | 企業の corpid（ここは appid という名前ですが、corpid を入れる点に注意） |
+| `redirect_uri` | 認可後の戻り先アドレス。URL Encode が必要で、信頼ドメイン配下でなければならない |
+| `response_type` | 固定 `code` |
+| `scope` | `snsapi_base` |
+| `agentid` | 自作アプリの agentid（**必須**。これがないと一部バージョンで当該アプリの身份を取得できない） |
+| `state` | 任意パラメータ。企業微信がそのまま返送する。CSRF 対策 ＋ 戻り先パスの受け渡しに使用 |
+| `#wechat_redirect` | 固定サフィックス。hash 形式で末尾に置く必要がある |
 
-## 七、セキュリティ設計
-
-### 7.1 access_token のセキュリティ管理
-
-- access_token はフロントエンドに絶対に公開してはならず、サーバー側で取得・管理する
-- キャッシュ（Redis 等）での保存を推奨、TTL を7100秒に設定（100秒の余裕を残す）
-- 複数インスタンスデプロイ時は分散ロックで並行更新による旧 token 無効化を防止
-- token の更新頻度を定期的に監視、異常な高頻度更新は漏洩の可能性を示す
-
-### 7.2 機密設定の分離
-
-corpid、secret、agentid などの機密情報はハードコードやコードリポジトリへのコミットを避ける：
-
-```yaml
-# application-prod.yml（本番環境）
-wecom:
-  corpid: ${WECOM_CORPID}        # 環境変数注入
-  agentid: ${WECOM_AGENTID}
-  secret: ${WECOM_SECRET}
-  callback:
-    token: ${WECOM_CALLBACK_TOKEN}
-    encoding-aes-key: ${WECOM_CALLBACK_AES_KEY}
-```
-
-```bash
-# 環境変数注入（デプロイスクリプト）
-export WECOM_CORPID="your_corpid"
-export WECOM_AGENTID="your_agentid"
-export WECOM_SECRET="your_secret"
-```
-
-### 7.3 ミニプログラムのセキュリティ設計
-
-ミニプログラムモードでは以下のセキュリティ要点に注意が必要です：
-
-**1. サーバードメインホワイトリスト**：
-- すべての `wx.request`、`wx.uploadFile` 呼び出しは設定済みの合法ドメインを指す必要あり
-- 開発者ツールで「合法ドメインを検証しない」をチェック可能だが、**本番環境では正確に設定が必須**
-- ドメインは HTTPS 必須、HTTP と IP は非対応
-
-**2. JWT Token 管理**：
-- token の有効期限は長くしすぎない（2-7日を推奨）、期限切れ後は `wx.qyLogin` でサイレント更新
-- token はミニプログラムの Storage に保存、企業WeChat退出後に自動クリア
-- サーバー側は token に対応するデバイス情報を記録、リモート無効化をサポート
-
-**3. コードパッケージのセキュリティ**：
-- ミニプログラムのコードパッケージはユーザーのデバイスにキャッシュされるため、コード内に機密情報をハードコードしない
-- 環境変数とインターフェースアドレスはビルド時に注入し、dev/prod 環境を区別
+フロント側では注入可能な `WecomOAuthService`（`src/app/wecom/oauth.service.ts`）としてラップします：
 
 ```typescript
-// config/env.ts
-const env = __wxConfig.envVersion; // 'develop' | 'trial' | 'release'
+import { Injectable, inject } from '@angular/core';
+import { WecomEnvService } from './env.service';
 
-export const config = {
-  develop: {
-    apiUrl: 'http://localhost:8080',
-  },
-  trial: {
-    apiUrl: 'https://api-staging.attendance.yourcompany.com',
-  },
-  release: {
-    apiUrl: 'https://api.attendance.yourcompany.com',
-  },
-}[env] || {
-  apiUrl: 'https://api.attendance.yourcompany.com',
-};
+@Injectable({ providedIn: 'root' })
+export class WecomOAuthService {
+  private readonly env = inject(WecomEnvService);
 
-export const API_BASE_URL = config.apiUrl;
+  private readonly CORP_ID = 'ww your_corpid';        // corpid は高機密情報ではないためフロントに置ける
+  private readonly AGENT_ID = '1000002';              // agentid も同様に公開可能
+  private readonly CALLBACK =
+    'https://attendance.yourcompany.com/mobile/oauth/callback';
+
+  hasToken(): boolean {
+    return !!localStorage.getItem('sys_token');
+  }
+
+  /** ランダムな state を生成し、同時に「ログイン後に遷移するページ」を sessionStorage に一時保存 */
+  private buildState(redirectPath: string): string {
+    const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    sessionStorage.setItem(`wx_state_${nonce}`, redirectPath || '/mobile/checkin');
+    sessionStorage.setItem('wx_state_nonce', nonce);   // コールバック時に検証
+    return nonce;
+  }
+
+  /** 免登を開始：企業微信の認可 URL へフルページ遷移する */
+  redirectToWecomAuth(redirectPath: string): void {
+    if (!this.env.isInWecom()) {
+      // 企業微信環境以外（PC ブラウザで直接開いた場合など）は
+      // システムのユーザー名／パスワードのログインページへ遷移
+      window.location.href = '/login?redirect=' + encodeURIComponent(redirectPath);
+      return;
+    }
+    const state = this.buildState(redirectPath);
+    const url =
+      'https://open.weixin.qq.com/connect/oauth2/authorize' +
+      `?appid=${encodeURIComponent(this.CORP_ID)}` +
+      `&redirect_uri=${encodeURIComponent(this.CALLBACK)}` +
+      '&response_type=code' +
+      '&scope=snsapi_base' +
+      `&agentid=${this.AGENT_ID}` +
+      `&state=${encodeURIComponent(state)}` +
+      '#wechat_redirect';
+    window.location.replace(url);
+  }
+}
 ```
 
-**4. session_key の保護**：
-- `session_key` はサーバー側のみで使用、フロントエンドに絶対に返却しない
-- 暗号化データ（電話番号、位置情報等の暗号化情報）の復号に使用
-- Redis にキャッシュし、適切な TTL を設定
+ルートガードでは `hasToken()` を呼んで判定し、未ログインなら `redirectToWecomAuth()` を呼ぶだけです（3.3 の `WecomAuthGuard` 参照）。
 
-### 7.4 API セキュリティ
+> corpid、agentid は「公開識別子」です（認可 URL はそもそもブラウザ内に平文で現れます）。フロントに置いても問題ありません。本当の鍵は secret だけであり、それは常にサーバー側にのみ存在します。
 
-- すべてのビジネスインターフェースは認証（JWT）が必要、OAuth2 コールバックと企業WeChatコールバックインターフェースを除く
-- リプレイ防止：インターフェース署名 + タイムスタンプ検証
-- レート制限：悪意のある呼び出しを防止、Redis + トークンバケットまたはスライディングウィンドウを使用
-- 入力検証：`@Valid` アノテーションでリクエストパラメータを検証
+### 4.4 ステップ2：コールバック着陸ページで code をトークンに交換する
+
+`/mobile/oauth/callback?code=xxx&state=yyy` に戻った後、コールバックページは3つの処理を行います：state の検証 → code をバックエンドに送信 → JWT を取得したら元の目的ページへ遷移、です。
+
+```typescript
+// src/app/mobile/pages/oauth/oauth-callback.component.ts
+import { Component, inject, OnInit, signal } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
+import { AuthService } from '../../../core/services/auth.service';
+
+@Component({
+  selector: 'app-oauth-callback',
+  standalone: true,
+  template: `<div class="oauth-loading">{{ errMsg() }}</div>`,
+})
+export default class OauthCallbackComponent implements OnInit {
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private auth = inject(AuthService);
+
+  protected errMsg = signal('ログイン中...');
+
+  async ngOnInit(): Promise<void> {
+    const code = this.route.snapshot.queryParamMap.get('code') ?? '';
+    const state = this.route.snapshot.queryParamMap.get('state') ?? '';
+
+    if (!code) { this.errMsg.set('認可失敗：code がありません'); return; }
+
+    // 1. state を検証し CSRF を防ぐ：遷移前に保存した nonce と一致する必要がある
+    const savedNonce = sessionStorage.getItem('wx_state_nonce');
+    if (!state || state !== savedNonce) {
+      this.errMsg.set('ログイン状態の検証に失敗しました。アプリを開き直してください');
+      return;
+    }
+    const redirectPath = sessionStorage.getItem(`wx_state_${state}`) || '/mobile/checkin';
+
+    try {
+      // 2. code をバックエンドに渡しシステムの JWT と交換
+      const { token } = await firstValueFrom(this.auth.loginByWecomCode(code));
+      localStorage.setItem('sys_token', token);
+      sessionStorage.removeItem(`wx_state_${state}`);
+      sessionStorage.removeItem('wx_state_nonce');
+      // 3. 元々行きたかったページへ戻る（特定の承認待ち詳細の場合もある）
+      this.router.navigateByUrl(redirectPath, { replaceUrl: true });
+    } catch (e: any) {
+      this.errMsg.set('自動ログインに失敗しました：' + (e?.message || '再試行してください'));
+    }
+  }
+}
+```
+
+```typescript
+// src/app/core/services/auth.service.ts
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, map } from 'rxjs';
+
+interface WecomLoginResp { token: string; userInfo: unknown; }
+
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private http = inject(HttpClient);
+
+  /** code を JWT に交換：token 不要の数少ないインターフェース（インターセプターで通過させる） */
+  loginByWecomCode(code: string): Observable<WecomLoginResp> {
+    return this.http
+      .post<{ code: number; message: string; data: WecomLoginResp }>(
+        '/api/auth/wecom/login', { code })
+      // バックエンド統一レスポンス封筒 { code, message, data } をほどく（エラーコード処理はインターセプターに集約可能）
+      .pipe(map((resp) => resp.data));
+  }
+}
+```
+
+### 4.5 ステップ3：バックエンドで code を userid に交換する（本人認証の中核）
+
+バックエンドが code を受け取ったら、まず access_token を取得し、その後2つのインターフェースを呼びます：
+
+- `auth/getuserinfo`：code → userid（社内メンバー）または openid（社外メンバー／外部連絡先）
+- userid を取得した後、必要であればさらに `user/get`（連絡先）で氏名、部門、携帯番号を補完する
+
+**インターフェース1：アクセス証明の取得**
+
+```
+GET https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=CORPID&corpsecret=SECRET
+```
+
+`access_token` が返ります（有効期間 7200 秒）。access_token は集中管理が必須です（Redis キャッシュ ＋ 分散ロック、第8章参照）。フロントや他のサービスが個別に取得することはありません。
+
+**インターフェース2：code を userid に交換**
+
+```
+GET https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo?access_token=TOKEN&code=CODE
+```
+
+社内メンバーの場合の返却：
+
+```json
+{
+  "errcode": 0,
+  "errmsg": "ok",
+  "userid": "zhangsan",
+  "user_ticket": "xxx"
+}
+```
+
+> `userid` ではなく `openid` が返ってきた場合、現在の利用者がその企業アプリの表示範囲にいない（外部連絡先の可能性がある）ことを意味します。自動的にアカウントを作るのではなく、ログインを拒否し、管理者に連絡して権限を開通してもらうよう案内すべきです。
+
+**ログイン Controller**：
 
 ```java
 /**
- * インターフェースレート制限アノテーション
+ * 企業微信 H5 免登（自動ログイン）
  *
  * @author cuckoom
  */
-@Target(ElementType.METHOD)
-@Retention(RetentionPolicy.RUNTIME)
-public @interface RateLimit {
-    /** レート制限 key プレフィックス */
-    String key() default "";
-    /** 時間ウィンドウ内の許可リクエスト数 */
-    int limit() default 60;
-    /** 時間ウィンドウ（秒） */
-    int window() default 60;
-}
-
-/**
- * レート制限アスペクト
- */
-@Aspect
-@Component
+@RestController
+@RequestMapping("/api/auth/wecom")
 @Slf4j
-public class RateLimitAspect {
+public class WecomAuthController {
 
+    @Resource
+    private WecomAuthService wecomAuthService;
+
+    /**
+     * H5 OAuth シームレスログイン：code を userid に交換し、
+     * システムアカウントと紐付けたうえで JWT を発行する
+     */
+    @PostMapping("/login")
+    public Result<WecomLoginVO> login(@RequestBody @Valid WecomLoginDTO dto) {
+        log.info("企業微信 H5 免登、code={}", dto.getCode());
+        WecomLoginVO vo = wecomAuthService.loginByCode(dto.getCode());
+        return Result.success(vo);
+    }
+}
+```
+
+```java
+/**
+ * 企業微信免登 Service
+ *
+ * @author cuckoom
+ */
+@Service
+@Slf4j
+public class WecomAuthService {
+
+    @Resource
+    private WecomTokenManager tokenManager;
+    @Resource
+    private RestTemplate restTemplate;
+    @Resource
+    private SysUserService userService;
+    @Resource
+    private JwtTokenProvider jwtTokenProvider;
+
+    public WecomLoginVO loginByCode(String code) {
+        // 1. code を userid に交換
+        String accessToken = tokenManager.getAccessToken();
+        String url = String.format(
+                "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo?access_token=%s&code=%s",
+                accessToken, code);
+
+        JSONObject resp = restTemplate.getForObject(url, JSONObject.class);
+        if (resp == null || resp.getIntValue("errcode") != 0) {
+            throw new BusinessException(ErrorCode.WECOM_AUTH_FAILED,
+                    "企業微信の身份情報取得に失敗しました：" + (resp == null ? "null" : resp.getString("errmsg")));
+        }
+
+        String wecomUserId = resp.getString("userid");
+        if (StrUtil.isBlank(wecomUserId)) {
+            // openid しかない：社内メンバーではなく、アプリの表示範囲外
+            throw new BusinessException(ErrorCode.WECOM_USER_NOT_IN_SCOPE,
+                    "現在のアカウントはアプリの認可範囲にありません。管理者に連絡してください");
+        }
+
+        // 2. userid をシステムアカウントに対応付ける（重要、4.6 参照）
+        SysUser user = userService.getOrBindByWecomUserId(wecomUserId);
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            throw new BusinessException(ErrorCode.ACCOUNT_DISABLED, "アカウントは無効化されています");
+        }
+
+        // 3. システム独自の JWT を発行し、既存認証体系を再利用
+        String jwt = jwtTokenProvider.generateToken(user.getId(), user.getUsername());
+        return WecomLoginVO.builder()
+                .token(jwt)
+                .userInfo(UserInfoVO.of(user))
+                .build();
+    }
+}
+```
+
+### 4.6 ステップ4：企業微信アカウントとシステムアカウントの紐付け（既存システムで最も重要な設計）
+
+これが「既存業務システム」と「ゼロから作るシステム」の最大の違いです。システムにはすでに多くのアカウントがあり（社員番号、メール、ドメインアカウントでログインしている可能性がある）、企業微信から入ってくるのは userid が1つあるだけです。**単純に「userid で新しいユーザーを作る」ことはできません**。さもないと同一人物が2つのアカウントになり、勤怠記録も Activiti の承認待ちもすべて整合しなくなります。
+
+紐付け方法は3つ推奨できるものがあり、企業の実情に合わせて選択します：
+
+**方法 A：社員番号／アカウントが一致、自動紐付け（最推奨、運用ゼロ）**
+
+企業微信の連絡先にある「アカウント」項目は通常、企業統一の社員番号であり、企業微信の userid も社員番号になっていることが少なくありません。userid ＝ システムの username（または社員番号）という規約にし、ログイン時にアカウントで直接関連付けます：
+
+```java
+/**
+ * 企業微信の userid でシステムアカウントを紐付ける
+ * 規約：企業微信 userid とシステム社員番号(username)が一致
+ */
+public SysUser getOrBindByWecomUserId(String wecomUserId) {
+    // 1. まず紐付け済みの wecom_user_id で検索
+    SysUser user = userMapper.findByWecomUserId(wecomUserId);
+    if (user != null) {
+        return user;
+    }
+
+    // 2. 未紐付け：社員番号(username)で既存アカウントを自動マッチング
+    user = userMapper.findByUsername(wecomUserId);
+    if (user != null) {
+        // 紐付け関係を構築し、次回は直接ヒットさせる
+        user.setWecomUserId(wecomUserId);
+        userMapper.updateById(user);
+        log.info("システムアカウント {} を企業微信 userid {} に自動紐付け", user.getUsername(), wecomUserId);
+        return user;
+    }
+
+    // 3. それでも一致しない：黙ってアカウント作成しない。紐付け誘導が必要な状態を返し、
+    // 管理者またはセルフ紐付けフローで処理する
+    throw new BusinessException(ErrorCode.WECOM_ACCOUNT_NOT_BOUND,
+            "企業微信アカウントに関連するシステムアカウントが見つかりません。管理者に連絡して紐付けてください");
+}
+```
+
+**方法 B：セルフ紐付け（アカウント体系が統一されていない場合）**
+
+初回ログイン時に自動マッチングできなければ、ユーザーに一度だけシステムアカウントとパスワードを入力してもらって紐付けを完了させます。その後は当該 wecom_user_id と user_id の対応が DB に保存され、永続的に自動ログインになります：
+
+```
+初回企業微信ログイン → バックエンドが対応なしを検知 → NEED_BIND 状態を返す
+  → H5 が紐付けページを表示（システムアカウント/パスワード、または社員番号＋SMS認証コードを入力）
+  → バックエンド検証通過 → sys_user.wecom_user_id に書き込み → JWT 発行
+```
+
+紐付け関係は一度だけ構築し、クレデンシャルは検証後に破棄し、平文パスワードは保存しません。
+
+**方法 C：管理者による事前紐付け／連絡先同期**
+
+連絡先 API（`user/list`）で部門単位に一括同期し、企業微信の userid とシステムアカウントを社員番号で突き合わせます（同期方式は第8章に示します）。リリース前の一括初期化に適しています。
+
+**ユーザーテーブルの改修**（既存ユーザーテーブルにフィールドを追加するだけで、既存構造は変更しない）：
+
+```sql
+ALTER TABLE sys_user ADD COLUMN wecom_user_id VARCHAR(64);
+COMMENT ON COLUMN sys_user.wecom_user_id IS '企業微信 userid（外部身份）';
+CREATE UNIQUE INDEX uk_sys_user_wecom ON sys_user (wecom_user_id) WHERE wecom_user_id IS NOT NULL;
+```
+
+> 設計のポイント：**内部 userId は不変を保つ**ことです。勤怠記録の外部キー、Activiti の `ACT_RU_TASK.ASSIGNEE_`、候補者グループはすべて引き続きシステム内部の userId（username）を使用します。企業微信の userid は「ログイン時に本人を認識する」ことと「プッシュ時の宛先指定」にのみ使い、`sys_user.wecom_user_id` という対応層でデカップリングします。これによりワークフロー定義を汚さず、PC のアカウント／パスワードや他の SSO といったログイン手段の併存も維持できます。
+
+### 4.7 ステップ5：JWT と既存認証体系のシームレスな接続
+
+免登で userid を取得した後のリクエストは PC 版とまったく同じで、すべてシステム既存の JWT/Session 認証を通します。これにより勤怠・承認 API の改造はゼロです。
+
+フロントでは Angular の `HttpInterceptor` で token を一元注入し、401 時に免登をやり直します：
+
+```typescript
+// src/app/core/interceptors/auth.interceptor.ts
+import { HttpInterceptorFn, HttpHandlerFn, HttpRequest, HttpErrorResponse }
+  from '@angular/common/http';
+import { inject } from '@angular/core';
+import { catchError, throwError } from 'rxjs';
+import { WecomEnvService } from '../../wecom/env.service';
+
+export const authInterceptor: HttpInterceptorFn = (
+  req: HttpRequest<unknown>, next: HttpHandlerFn,
+) => {
+  const token = localStorage.getItem('sys_token');
+  let authed = req;
+  if (token) {
+    authed = req.clone({ setHeaders: { Authorization: *** ${token}` } });
+  }
+
+  return next(authed).pipe(
+    catchError((error: HttpErrorResponse) => {
+      if (error.status === 401) {
+        // token 期限切れ：企業微信内ならシームレス免登をやり直し（無感覚）、外部環境ならログインページへ
+        localStorage.removeItem('sys_token');
+        const env = inject(WecomEnvService);
+        if (env.isInWecom()) {
+          location.reload();   // ルートガードが自動的に OAuth を再開始
+        } else {
+          location.href = '/login?redirect=' + encodeURIComponent(location.pathname);
+        }
+      }
+      return throwError(() => error);
+    }),
+  );
+};
+```
+
+`app.config.ts` に登録します（関数型インターセプター、Angular 15+）：
+
+```typescript
+// src/app/app.config.ts
+import { ApplicationConfig } from '@angular/core';
+import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { APP_ROUTES } from './app.routes';
+import { authInterceptor } from './core/interceptors/auth.interceptor';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(APP_ROUTES, withComponentInputBinding()),
+    provideHttpClient(withInterceptors([authInterceptor])),
+  ],
+};
+```
+
+> 免登インターフェース `/api/auth/wecom/login` 自体には token が付きません。インターセプターは「ローカルストレージに token がない」場合をそのまま通過させるため特別な判定は不要で、401 の場合にのみ免登のやり直しが発火します。
+
+バックエンドは既存の Spring Security 設定（SecurityFilterChain Bean 形式）を踏襲し、企業微信のログインエンドポイントとコールバックエンドポイントだけを通過させます：
+
+```java
+/**
+ * Spring Security セキュリティ設定
+ *
+ * @author cuckoom
+ */
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers(
+                        "/api/auth/wecom/**",      // 企業微信免登
+                        "/api/wecom/callback/**"   // 企業微信コールバック
+                ).permitAll()
+                .anyRequest().authenticated()
+            )
+            // 前後端分離 + JWT：ステートレス、CSRF 無効、JWT フィルターでトークンを解析
+            .csrf(AbstractHttpConfigurer::disable)
+            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .addFilterBefore(jwtAuthenticationFilter(),
+                    UsernamePasswordAuthenticationFilter.class);
+        return http.build();
+    }
+    // JwtAuthenticationFilter：Authorization ヘッダーを解析し SecurityContext に書き込む。既存実装を踏襲
+}
+```
+
+> プロジェクトがまだ Spring Security 5.x の `WebSecurityConfigurerAdapter` を使っている場合、同等の書き方は `configure(HttpSecurity)` をオーバーライドし、同じ2つのパスに対して `permitAll()` と `csrf().disable()` を指定する方法です。免登で発行される JWT は既存の JWT フィルターが一括検証し、アカウント／パスワードログインと完全に共用されます。
+
+ここまでで「アプリを開く → 自動ログイン → 自分の勤怠と承認待ちがすぐ見える」という流れが完全につながり、しかも**勤怠と Activiti の既存インターフェース、権限、データは1行も変更していません**。
+## 5. JS-SDK：H5 で位置情報、撮影、スキャンを使う
+
+勤怠シナリオには位置情報、撮影、スキャンが欠かせません。H5 はミニプログラムのようにネイティブ API を直接呼べないため、企業微信 JS-SDK を通じ、署名認証を経て呼び出す必要があります。この章ではそのまま使える署名方式を示し、特にハマりやすい iOS/Android の署名 URL の差異を重点的に扱います。
+
+### 5.1 wx.config と wx.agentConfig
+
+企業微信 JS-SDK には2層の設定があり、初心者が最も混同しやすいポイントです：
+
+| 設定 | 用途 | 署名チケット |
+|------|------|----------|
+| `wx.config` | 基本設定を注入し、汎用機能（シェア、位置情報 `getLocation`、スキャン `scanQRCode`、画像選択など大半のインターフェース）を起動 | `jsapi_ticket` で署名 |
+| `wx.agentConfig` | 現在の**自作アプリ**の身份を注入し、企業微信専用インターフェース（`selectEnterpriseContact` の人選択、一部承認関連インターフェースなど）を起動 | `get_jsapi_ticket`（企業アプリチケット）で署名 |
+
+勤怠打刻の位置情報／撮影／スキャンは `wx.config` が通れば十分です。「組織構造に沿った承認者／CC 対象者の選択ピッカー」といった企業専用機能にのみ、追加で `agentConfig` が必要になります。
+
+### 5.2 バックエンド：jsapi_ticket 管理と署名
+
+`jsapi_ticket` は access_token と交換し、有効期間は 7200 秒です。こちらも集中キャッシュが必要です：
+
+```
+GET https://qyapi.weixin.qq.com/cgi-bin/get_jsapi_ticket?access_token=TOKEN
+```
+
+企業アプリの agentConfig で使うチケットのインターフェースは `ticket/get?type=agent_config` です。
+
+署名アルゴリズム（企業微信の規定）：
+
+```
+string1 = jsapi_ticket={ticket}&noncestr={nonce}&timestamp={timestamp}&url={現在のページURL}
+signature = SHA1(string1)
+```
+
+```java
+/**
+ * JS-SDK 署名 Service
+ *
+ * @author cuckoom
+ */
+@Service
+public class WecomJsapiService {
+
+    @Resource
+    private WecomTokenManager tokenManager;
+    @Resource
+    private RestTemplate restTemplate;
     @Resource
     private StringRedisTemplate redisTemplate;
 
-    @Around("@annotation(rateLimit)")
-    public Object around(ProceedingJoinPoint joinPoint, RateLimit rateLimit) throws Throwable {
-        String methodName = joinPoint.getSignature().getName();
-        String key = "rate_limit:" + rateLimit.key() + ":" + methodName;
+    private static final String JSAPI_TICKET_KEY = "wecom:jsapi_ticket";
 
-        Long count = redisTemplate.opsForValue().increment(key);
-        if (count != null && count == 1) {
-            redisTemplate.expire(key, rateLimit.window(), TimeUnit.SECONDS);
+    /** jsapi_ticket を取得（キャッシュ。ロジックは access_token と同様。分散ロックは省略、8.1 参照） */
+    public String getJsapiTicket() {
+        String cached = redisTemplate.opsForValue().get(JSAPI_TICKET_KEY);
+        if (StrUtil.isNotBlank(cached)) {
+            return cached;
         }
-
-        if (count != null && count > rateLimit.limit()) {
-            throw new BusinessException(ErrorCode.RATE_LIMIT_EXCEEDED, "リクエストが頻繁すぎます、しばらくしてから再試行してください");
+        String token = tokenManager.getAccessToken();
+        String url = "https://qyapi.weixin.qq.com/cgi-bin/get_jsapi_ticket?access_token=" + token;
+        JSONObject resp = restTemplate.getForObject(url, JSONObject.class);
+        if (resp == null || resp.getIntValue("errcode") != 0) {
+            throw new BusinessException(ErrorCode.WECOM_API_ERROR, "jsapi_ticket の取得に失敗しました");
         }
+        String ticket = resp.getString("ticket");
+        redisTemplate.opsForValue().set(JSAPI_TICKET_KEY, ticket, 7100, TimeUnit.SECONDS);
+        return ticket;
+    }
 
-        return joinPoint.proceed();
+    /**
+     * wx.config に必要な署名を生成
+     * @param pageUrl フロントから送られた署名対象ページ URL（iOS の特殊扱いは 5.3 参照）
+     */
+    public WxConfigSignatureVO buildConfigSignature(String pageUrl) {
+        String ticket = getJsapiTicket();
+        String nonceStr = IdUtil.fastSimpleUUID();
+        String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
+
+        // 注意：署名に参加する url はフロントの location.href と完全一致する必要がある
+        // （hash の扱いルールは後述）
+        String raw = String.format(
+                "jsapi_ticket=%s&noncestr=%s&timestamp=%s&url=%s",
+                ticket, nonceStr, timestamp, pageUrl);
+        String signature = SecureUtil.sha1(raw);
+
+        return WxConfigSignatureVO.builder()
+                .corpId(tokenManager.getCorpId())
+                .agentId(tokenManager.getAgentId())
+                .nonceStr(nonceStr)
+                .timestamp(timestamp)
+                .signature(signature)
+                .build();
     }
 }
 ```
 
-### 7.5 データセキュリティ
+```java
+@RestController
+@RequestMapping("/api/wecom/jssdk")
+public class WecomJsdkController {
 
-- 打刻写真などの機密データは内部ネットワークファイルシステムに保存、外部に非公開
-- ユーザーの電話番号などの機密フィールドは暗号化して保存（AES-256）
-- データベースの定期バックアップ
-- 打刻記録の位置情報データはマスキング表示（百メートル単位まで）
+    @Resource
+    private WecomJsapiService jsapiService;
 
-## 八、落とし穴ガイド
-
-### 8.1 access_token の並行更新
-
-**問題**：複数インスタンスが同時に access_token を更新し、旧 token が無効化され、他インスタンスのリクエストがエラーになる。
-
-**解決策**：分散ロックで1つのインスタンスのみ更新を保証し、他インスタンスは待機。ダブルチェックパターン：ロック取得後に再度キャッシュを確認し、重複更新を回避。第5章の `WecomTokenManager` 実装を参照。
-
-### 8.2 ミニプログラム code は一度のみ使用可能
-
-**問題**：`wx.qyLogin` が返す `code` は一度のみ使用可能、かつ5分間有効。同一 code で `jscode2session` を繰り返し呼び出すとエラーになる。
-
-**解決策**：
-- ミニプログラム側は起動のたびに `wx.qyLogin` を呼び出し、新しい code を取得
-- バックエンドは code 受領後ただちに交換、キャッシュしない
-- 交換成功後に JWT を発行し、後続リクエストは code ではなく JWT を使用
-
-### 8.3 requiredPrivateInfos 宣言の欠落
-
-**問題**：`wx.getLocation` の呼び出しで `getLocation is not a function` エラーまたは app.json での宣言が必要という警告が出る。
-
-**解決策**：`app.json` で必要なプライベート API を宣言：
-
-```json
-{
-  "requiredPrivateInfos": [
-    "getLocation",
-    "chooseLocation"
-  ]
+    /** フロントがページに入った後、現在の URL で署名と交換する */
+    @GetMapping("/config")
+    public Result<WxConfigSignatureVO> config(@RequestParam("url") String url) {
+        return Result.success(jsapiService.buildConfigSignature(url));
+    }
 }
 ```
 
-同時に `permission` フィールドで権限の用途説明を宣言する必要があり、そうしないと審査で却下される可能性がある。
+### 5.3 フロント：署名初期化（iOS 入口ページ問題を重点対応）
 
-### 8.4 位置情報精度と不正防止
+JS-SDK の最も古典的なハマりどころ：**Android は現在ページの URL で署名し、iOS（WKWebView）はアプリに最初に入ったときの入口ページ URL で署名する**という点です。SPA ではフロント側のルート切替でページが実際にはリフレッシュされないため、iOS で「現在のルートの href」で署名すると、着陸した最初のページでない限り `wx.config` が必ず `invalid signature` を返します。
 
-**問題**：GPS の位置情報精度は約10-50メートルで、ドリフトが発生する。一部のユーザーが仮想位置情報ソフトウェアで不正を行う可能性がある。
-
-**解決策**：
-- 許可半径を100-300メートルに設定、厳格すぎると誤検知が発生
-- ミニプログラム側で高精度位置情報をリクエスト（`isHighAccuracy: true`）、`accuracy` フィールドをチェックし、精度が100メートルより悪い場合は空曠な場所への移動を促す
-- バックエンドで異常検知：頻繁な再打刻、非勤務日の打刻、遠隔地での打刻等
-- 写真打刻にウォーターマークを付加（時間 + 位置 + デバイスフィンガープリント）
-- スキャン打刻は位置情報との二重検証を組み合わせ
-- 模擬位置情報の検出：ミニプログラムは `wx.getLocation` の `accuracy` で判断、模擬位置情報は通常精度が0または固定値
-
-### 8.5 ミニプログラムのサーバードメイン設定
-
-**問題**：開発環境のバックエンドアドレスは `http://localhost:8080` で、ミニプログラムのリクエストが「以下の request 合法ドメインリストにない」というエラーで失敗する。
-
-**解決策**：
-- 開発段階：WeChat開発者ツール -> 詳細 -> ローカル設定 ->「合法ドメイン、web-view（ビジネスドメイン）、TLS バージョンおよび HTTPS 証明書を検証しない」をチェック
-- 体験版と正式版：管理コンソールでのサーバードメイン設定が必須、localhost と IP は非対応
-- request、uploadFile、downloadFile ドメインはそれぞれ設定が必要
-- ドメイン設定は毎月最大50回まで変更可能
-
-### 8.6 wx.chooseImage は非推奨
-
-**問題**：`wx.chooseImage` 使用時に一部デバイスで異常が返される。
-
-**解決策**：`wx.chooseMedia` に移行し、画像と動画の同時選択をサポート、API がより安定：
+統一的な解決法：**入口ページで最初の URL を記録し、以降の署名はすべてそれを使う（iOS）。Android は常に現在 URL を使う。**
 
 ```typescript
-// 旧 API（非推奨）
-wx.chooseImage({ ... });
+// src/app/wecom/jssdk.service.ts
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom, map } from 'rxjs';
+import wx from 'weixin-js-sdk';
+import { WecomEnvService } from './env.service';
 
-// 新 API（推奨）
-wx.chooseMedia({
-  count: 1,
-  mediaType: ['image'],
-  sourceType: ['camera'],
-  ...
-});
-```
+interface WxConfigSignature {
+  corpId: string; agentId: string; nonceStr: string;
+  timestamp: string; signature: string;
+}
 
-### 8.7 ミニプログラムのバージョン公開とロールバック
+@Injectable({ providedIn: 'root' })
+export class WecomJssdkService {
+  private http = inject(HttpClient);
+  private env = inject(WecomEnvService);
+  private configPromise: Promise<void> | null = null;
 
-**問題**：ミニプログラムは審査提出後にのみ公開可能、審査中はオンラインバージョンが旧版のままで、緊急バグがあっても即座にロールバックできない。
+  /** 署名対象 URL を取得：#hash 部分を除去する（企業微信の署名ルールでは url に hash を含めない） */
+  private signableUrl(href: string): string {
+    const idx = href.indexOf('#');
+    return idx >= 0 ? href.slice(0, idx) : href;
+  }
 
-**解決策**：
-- ミニプログラムは「体験版」と「正式版」の分離をサポート、開発とテストは体験版で実施
-- 正式版公開前に体験版で完全テストを実施
-- 企業WeChatのグレード公開機能を活用し、小範囲公開後に全量公開
-- バックエンド API は後方互換性を維持し、ミニプログラム旧バージョンの呼び出し失敗を回避
-- 緊急時は管理コンソールで「公開済みバージョンの撤回」が可能（回数制限あり）
-
-### 8.8 H5 JS-SDK 署名 URL の iOS/Android 差異
-
-**問題**：H5 モードの JS-SDK 署名 URL は iOS と Android で処理方式が異なる：
-- Android：現在のページ URL を使用
-- iOS：エントリページ URL（初回アプリケーションに入った URL）を使用
-
-**解決策**：iOS ではエントリ URL を記録し、後続の署名はすべてこの URL を使用。Android は現在のページ URL を使用。ミニプログラムモードではこの問題がなく、ミニプログラムを選択する大きな利点の一つ。
-
-### 8.9 企業WeChat API の頻度制限
-
-| API | 制限 |
-|-----|------|
-| access_token 取得 | 同一企業で5分間最大1000回 |
-| メッセージ送信 | アプリごと1分間最大200回 |
-| アドレス帳読取 | 1日最大10000回 |
-| 打刻データ取得 | 1日最大1000回 |
-| jscode2session | アプリごと1分間最大600回 |
-
-高頻度の呼び出しではキャッシュとバッチ処理が必要です。
-
-### 8.10 ミニプログラムのパッケージサイズ制限
-
-**問題**：ミニプログラムのメインパッケージが2MBを超えるとプレビュー/アップロード不可、総パッケージが20MBを超えると公開不可。
-
-**解決策**：
-- 打刻記録リスト、再打刻申請などの非コアページをサブパッケージに配置
-- 画像リソースは CDN にアップロードし、コードパッケージに内包しない
-- `wx.subPackages` でサブパッケージを設定
-
-```json
-{
-  "subPackages": [
-    {
-      "root": "pages/records",
-      "pages": ["index"]
-    },
-    {
-      "root": "pages/apply",
-      "pages": ["index"]
+  /** 入口ページ URL を記録（iOS のみ必要。アプリ起動直後・ルート遷移前に1回呼ぶ） */
+  private entryUrl(): string {
+    const key = 'wx_ios_entry_url';
+    if (this.env.isIOS()) {
+      let url = sessionStorage.getItem(key);
+      if (!url) {
+        url = this.signableUrl(location.href);
+        sessionStorage.setItem(key, url);
+      }
+      return url;
     }
-  ]
+    return this.signableUrl(location.href);   // Android は現在ページ
+  }
+
+  /** wx.config の完了を保証（全体で1回だけ、SPA 内で再利用可） */
+  ensureWxConfig(): Promise<void> {
+    if (this.configPromise) return this.configPromise;
+
+    this.configPromise = (async () => {
+      const url = this.entryUrl();
+      const cfg = await firstValueFrom(
+        this.http.get<{ code: number; data: WxConfigSignature }>(
+          '/api/wecom/jssdk/config', { params: { url } },
+        ).pipe(map((r) => r.data)),
+      );
+
+      await new Promise<void>((resolve, reject) => {
+        wx.config({
+          beta: true,                 // 必須！企業微信専用インターフェースには beta:true が必要
+          debug: false,
+          appId: cfg.corpId,
+          agentId: cfg.agentId,
+          timeStamp: cfg.timestamp,
+          nonceStr: cfg.nonceStr,
+          signature: cfg.signature,
+          jsApiList: ['getLocation', 'chooseImage', 'scanQRCode'],
+        });
+        wx.ready(() => resolve());
+        wx.error((res: any) => reject(new Error('wx.config 失敗: ' + res.errMsg)));
+      });
+    })();
+
+    return this.configPromise;
+  }
 }
 ```
 
-## 九、プロジェクト構築の実践補足
+アプリ起動時（ルートの初回遷移前）に早めに iOS 入口 URL を記録します。`APP_INITIALIZER` が使えます：
 
-### 9.1 バックエンドプロジェクト構造
+```typescript
+// src/app/app.config.ts に起動初期化を登録
+import { APP_INITIALIZER } from '@angular/core';
 
-```
-attendance-backend/
-├── pom.xml
-├── src/main/java/com/company/attendance/
-│   ├── AttendanceApplication.java
-│   ├── config/
-│   │   ├── WebMvcConfig.java          # Web 設定（インターセプター登録、CORS）
-│   │   ├── WecomConfig.java           # 企業WeChat設定クラス
-│   │   ├── RestTemplateConfig.java     # RestTemplate 設定
-│   │   └── RedisConfig.java           # Redis 設定
-│   ├── controller/
-│   │   ├── QyAuthController.java       # 認証（ミニプログラムログイン）
-│   │   ├── CheckinController.java      # 勤怠打刻
-│   │   ├── CheckinPhotoController.java # 写真撮影打刻
-│   │   ├── ScanCheckinController.java  # スキャン打刻
-│   │   └── WecomCallbackController.java # 企業WeChatコールバック
-│   ├── service/
-│   │   ├── QyAuthService.java
-│   │   ├── CheckinService.java
-│   │   ├── WecomTokenManager.java
-│   │   └── WecomMessageService.java
-│   ├── interceptor/
-│   │   └── JwtAuthInterceptor.java
-│   ├── entity/
-│   ├── dto/
-│   ├── vo/
-│   ├── mapper/
-│   └── common/
-│       ├── Result.java
-│       ├── ErrorCode.java
-│       ├── BusinessException.java
-│       └── GlobalExceptionHandler.java
-└── src/main/resources/
-    ├── application.yml
-    ├── application-dev.yml
-    ├── application-prod.yml
-    └── db/
-        └── changelogs/
-            └── 001-create-checkin-table.xml
+function recordWxEntryUrl() {
+  const jssdk = inject(WecomJssdkService);
+  const env = inject(WecomEnvService);
+  return () => {
+    // ensureWxConfig の入口記録ロジックを1回呼ぶ（iOS は初回遷移前に着陸ページ URL を固定化）
+    if (env.isInWecom()) {
+      // wx.config をウォームアップ。ブロックしなくてもよく、
+      // 実際に位置情報/スキャンを呼ぶとき service 内部でフォールバックされる
+      jssdk.ensureWxConfig().catch(() => void 0);
+    }
+  };
+}
+
+// providers に追加：
+// { provide: APP_INITIALIZER, useFactory: recordWxEntryUrl, multi: true }
 ```
 
-### 9.2 コア設定ファイル
+> 重要なのは iOS の入口 URL を、フロント側のルート遷移が一切発生する前に `location.href` から読み取って固定化することです。`APP_INITIALIZER`（Angular のルーター起動前に実行される）に置くのが最も確実です。署名のウォームアップをしない場合でも、少なくともこのフックで入口 URL を sessionStorage に書き込んでください。
+
+> ルーティングモードのおすすめ：hash と署名の認知負荷を減らすため、H5 モバイルは **history モード**を使えます。hash モードを使う場合は、上記の `signableUrl` のとおり必ず `#` の位置で切断し、前後端で署名に参加する URL が完全に一致するようにしてください。`encodeURIComponent` を使うかどうかも両者で統一します。
+
+### 5.4 地理位置情報による打刻
+
+```typescript
+// src/app/wecom/device.service.ts
+import { Injectable, inject } from '@angular/core';
+import wx from 'weixin-js-sdk';
+import { WecomJssdkService } from './jssdk.service';
+
+export interface LngLat { longitude: number; latitude: number; accuracy: number; }
+
+@Injectable({ providedIn: 'root' })
+export class WecomDeviceService {
+  private jssdk = inject(WecomJssdkService);
+
+  /** JS-SDK 位置情報（gcj02 火星座標、中国国内の地図と一致） */
+  getLocation(): Promise<LngLat> {
+    return this.jssdk.ensureWxConfig().then(() => new Promise((resolve, reject) => {
+      wx.getLocation({
+        type: 'gcj02',
+        success: (res: any) => resolve({
+          longitude: res.longitude,
+          latitude: res.latitude,
+          accuracy: res.accuracy,
+        }),
+        fail: (err: any) => reject(new Error('位置情報の取得に失敗しました。位置情報権限を確認してください：' + err.errMsg)),
+      });
+    }));
+  }
+
+  /** カメラ撮影を起動（カメラのみ、アルバム不可で不正防止）、localId を返す */
+  takePhoto(): Promise<string> {
+    return this.jssdk.ensureWxConfig().then(() => new Promise((resolve, reject) => {
+      wx.chooseImage({
+        count: 1,
+        sourceType: ['camera'],
+        sizeType: ['compressed'],
+        success: (res: any) => resolve(res.localIds[0]),
+        fail: (err: any) => reject(new Error('撮影に失敗しました：' + err.errMsg)),
+      });
+    }));
+  }
+
+  /** スキャン（執務席／会議室の QR コード打刻） */
+  scanQRCode(): Promise<string> {
+    return this.jssdk.ensureWxConfig().then(() => new Promise((resolve, reject) => {
+      wx.scanQRCode({
+        needResult: 1,              // 1=フロントが結果を受け取り自前で処理
+        scanType: ['qrCode'],
+        success: (res: any) => resolve(res.resultStr),
+        fail: (err: any) => reject(new Error('スキャンに失敗しました：' + err.errMsg)),
+      });
+    }));
+  }
+}
+
+/** Haversine 距離（メートル）。純関数なので共通 utils に置ける */
+export function distanceMeters(a: LngLat, b: { lat: number; lng: number }): number {
+  const R = 6371000;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.latitude);
+  const dLng = rad(b.lng - a.longitude);
+  const h = Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a.latitude)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+```
+
+打刻コンポーネントからの呼び出し（`checkin.component.ts`）。通知はチーム既存の UI ライブラリ（NG-ZORRO の `NzMessageService` など）を使います：
+
+```typescript
+// src/app/mobile/pages/checkin/checkin.component.ts（抜粋）
+import { Component, inject } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+import { NzMessageService } from 'ng-zorro-antd/message';
+import { WecomDeviceService, distanceMeters } from '../../../wecom/device.service';
+import { CheckinService } from '../../../core/services/checkin.service';
+
+@Component({ selector: 'app-checkin', standalone: true, template: '...' })
+export class CheckinComponent {
+  private device = inject(WecomDeviceService);
+  private checkinApi = inject(CheckinService);
+  private msg = inject(NzMessageService);
+
+  private readonly COMPANY = { lat: 30.2741, lng: 120.1551, radius: 200 };
+
+  async onCheckin(): Promise<void> {
+    const loc = await this.device.getLocation();
+    const dist = distanceMeters(loc, this.COMPANY);
+    if (dist > this.COMPANY.radius) {
+      this.msg.error(`打刻範囲外です。会社から ${Math.round(dist)} メートル離れています`);
+      return;
+    }
+    await firstValueFrom(this.checkinApi.submit({
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      accuracy: loc.accuracy,
+      distance: Math.round(dist),
+    }));
+    this.msg.success('打刻に成功しました');
+  }
+}
+```
+
+バックエンドの打刻 API はシステム既存の実装と同じです（距離の二次検証、重複打刻防止、DB 保存、プッシュ）。これらのロジックはすでに存在し、H5 は新しい呼び出し元の1つにすぎません。バックエンドは**距離を必ず再検証**し、フロントから渡される緯度経度を信用してはいけません（フロントの座標はパケットキャプチャで改ざん可能です）。
+
+### 5.5 撮影打刻とスキャン打刻
+
+撮影とスキャンは 5.4 の `WecomDeviceService` にすでにラップ済みです（`takePhoto()` は localId、`scanQRCode()` は QR コード内容を返す）。コンポーネントではそのまま await で呼ぶだけです。`takePhoto` で得た localId の画像はさらにアップロードが必要です：
+
+- `wx.uploadImage` でまず画像を企業微信にアップロードして `serverId` を得て、バックエンドが企業微信メディア API `media/get` を呼んで社内ネットワークに引き戻す方法——H5 から直接ファイルをアップロードしたくないケースに適します；
+- または、localId を canvas に描画して Blob に変換し、Angular の `FormData` ＋ `HttpClient` で既存ファイルサービスに直接 POST し、システム既存の添付ファイルストレージを再利用する方法。
+
+どちらの方式でもバックエンドは既存の写真保存とウォーターマーク（時刻＋位置＋デバイス情報）ロジックを踏襲します。スキャン打刻ではバックエンドが QR コードの token 有効性・有効期限を検証し、位置情報との二重検証を重ねます。こちらも同様に既存 API を再利用します。
+## 6. Activiti の複雑な承認フローを企業微信側で実現する
+
+勤怠関連の承認（打刻補正、休暇、外勤、残業申し立てなど）フローはすでに Activiti に定義されて稼働しています。企業微信側でフローを再実装する必要はなく、やることは3つだけです：**承認待ちを取り出す、承認操作を接続する、承認待ちを能動的に企業微信へプッシュする**。この章では会签（全員承認）、或签（1名承認）、組織構造に基づく承認という3つの代表的ノードを例に、再利用方法を説明します。
+
+### 6.1 まず処理者識別子を統一する
+
+Activiti はタスク処理者（`ACT_RU_TASK.ASSIGNEE_`）または候補者／グループ（`ACT_RU_IDENTITYLINK`）を1つの文字列で識別します。以下を必ず保証してください：**フロー定義にハードコードされた、または実行時に計算される処理者識別子が `sys_user.username`（内部アカウント、すなわち wecom_user_id に紐付く一意キー）と一致すること**。
+
+社員番号／ユーザー名（例：`zhangsan`）をシステム全体の一意な人員識別子として統一することをおすすめします：
+
+- Activiti の assignee / candidateUser = `sys_user.username`
+- 企業微信との対応 = `sys_user.wecom_user_id`（多くの企業ではこれも社員番号で2つが同じ場合もあるが、論理的には分離する）
+- 企業微信メッセージをプッシュするとき：`username → sys_user を照会 → wecom_user_id を取得` を `touser` とする
+
+こうすることで Activiti のフロー定義、UEL 式、候補者クエリを企業微信向けに一切変更する必要がありません。
+
+### 6.2 3つの代表的ノードのフロー定義での表現
+
+「打刻補正申請」フローを例に、会签、或签、組織構造承認の BPMN での書き方を示します。
+
+**会签（複数人全員の同意で通過）**——マルチインスタンスノード（multiInstanceLoopCharacteristics）＋ 完了条件を使います：
+
+```xml
+<userTask id="countersignLeaderHr" name="直属上司とHRの会签">
+  <documentation>全員が承認し、全員が同意して初めて通過。1人でも差し戻したら終了</documentation>
+  <multiInstanceLoopCharacteristics isSequential="false"
+                                   activiti:collection="${countersignUsers}"
+                                   activiti:elementVariable="approver">
+    <completionCondition>${approveResultList.size() == nrOfInstances
+        &amp;&amp; !approveResultList.contains('REJECT')}</completionCondition>
+  </multiInstanceLoopCharacteristics>
+  <userTask><extensionElements/></userTask>
+</userTask>
+```
+
+- `isSequential="false"`：並行会签。各人に同時に1つの task が生成される
+- `nrOfInstances`：会签の総人数；`approveResultList`：各人の承認結論を収集するフロー変数
+- 完了条件：全員が処理し、かつ REJECT がなければ次へ進む
+
+**或签（複数人のうち誰か1人が処理すればよい）**——同じくマルチインスタンスですが、完了条件を「1件処理したら終了」に変えます。より一般的なのは候補者（candidateUsers）を使う方法で、1つのタスクが複数人に見え、誰が引き受けても処理できます：
+
+```xml
+<userTask id="orSignDuty" name="当直グループ或签" activiti:candidateUsers="${dutyGroupUsers}">
+  <documentation>候補グループの誰か1人が引き受けて承認すればよい</documentation>
+</userTask>
+```
+
+またはマルチインスタンス ＋ `nrOfCompletedInstances >= 1` で、各人に承認待ちを1つずつ作り、1人が処理したら残りを自動キャンセルする実装も可能です。
+
+**組織構造に基づく動的承認**——処理者を固定せず、フロー式で組織構造から実時刻に計算します（申請者 → 直属部門責任者 → 管掌役員）：
+
+```xml
+<userTask id="deptLeaderApprove" name="部門責任者承認"
+          activiti:assignee="${orgService.findLeader(applyUserId)}"/>
+<userTask id="directorApprove" name="管掌役員承認"
+          activiti:assignee="${orgService.findDirector(applyUserId)}"/>
+```
+
+`orgService` は Activiti の式コンテキストに登録された Spring Bean で、内部で部門ツリーを上方向にたどって責任者を検索します。部門責任者が異動した後も、新しいフローインスタンスは自動的に最新の組織構造でルーティングされ、フロー定義の変更は不要です。
+
+> この BPMN は PC 版ですでに稼働しています。企業微信側はあくまで「処理入口」を1つ追加するだけで、処理アクションの底層で呼ばれるのは同じ `taskService.complete()` です。したがって会签のカウント、或签の引き受け、組織ルーティング、ゲートウェイ条件はすべてエンジンが一貫性を保証し、「PC のフローとスマホのフローが違う」という問題は発生しません。
+
+### 6.3 企業微信側の承認待ち一覧と詳細
+
+**承認待ち一覧**——Activiti の TaskQuery をそのまま使い、現在のログインユーザーの username で承認待ちを照会します（会签では各人に別々の task が1件ある；或签の候補タスクは taskCandidateUser で照会）：
+
+```java
+/**
+ * モバイル承認 Service（Activiti TaskService を再利用）
+ *
+ * @author cuckoom
+ */
+@Service
+public class MobileApprovalService {
+
+    @Resource
+    private TaskService taskService;
+    @Resource
+    private HistoryService historyService;
+    @Resource
+    private RepositoryService repositoryService;
+
+    /** 現在ユーザーの承認待ち（直接割当 ＋ 或签候補・未引受を含む） */
+    public List<TodoVO> listMyTodo(String username) {
+        List<Task> owned = taskService.createTaskQuery()
+                .taskAssignee(username)
+                .active()
+                .orderByTaskCreateTime().desc()
+                .list();
+
+        List<Task> candidate = taskService.createTaskQuery()
+                .taskCandidateUser(username)
+                .active()
+                .list();
+
+        return Stream.concat(owned.stream(), candidate.stream())
+                .distinct()
+                .map(this::toTodoVO)
+                .collect(Collectors.toList());
+    }
+
+    private TodoVO toTodoVO(Task task) {
+        Map<String, Object> vars = taskService.getVariables(task.getId());
+        BpmnModel model = repositoryService.getBpmnModel(task.getProcessDefinitionId());
+        String nodeType = readNodeType(model, task.getTaskDefinitionKey()); // COUNTERSIGN/ORSIGN/NORMAL
+
+        return TodoVO.builder()
+                .taskId(task.getId())
+                .processInstanceId(task.getProcessInstanceId())
+                .title(String.valueOf(vars.getOrDefault("title", task.getName())))
+                .nodeName(task.getName())
+                .nodeType(nodeType)
+                .applyUserName(String.valueOf(vars.get("applyUserName")))
+                .createTime(task.getCreateTime())
+                .candidate(Objects.isNull(task.getAssignee()))  // 或签の未引受
+                .build();
+    }
+}
+```
+
+**承認詳細**——フォーム、会签の進捗（誰が同意済みで誰が未処理か）、承認コメントのタイムラインを表示します：
+
+```java
+/** 会签進捗：履歴タスク ＋ 現在タスクから各処理者の状態を集約 */
+public List<ApproverProgressVO> countersignProgress(String processInstanceId) {
+    List<HistoricTaskInstance> done = historyService.createHistoricTaskInstanceQuery()
+            .processInstanceId(processInstanceId)
+            .finished()
+            .list();
+    List<Task> pending = taskService.createTaskQuery()
+            .processInstanceId(processInstanceId)
+            .list();
+    // マージ：done には承認コメント（COMMENT）が付き、pending は「承認待ち」とする
+    // 組み立ては省略。[{user, userName, status: APPROVED/REJECTED/PENDING, comment, time}] を返す
+    return mergeProgress(done, pending);
+}
+```
+
+フロントの `ApprovalDetailComponent` は `nodeType` に応じて描画します：会签なら複数アバターの進捗バー（処理済み／未処理）を表示し、或签なら「当直グループのメンバーは誰でも承認できます。タップして引き受けて処理」と表示します。
+
+### 6.4 引き受け（或签）と承認操作
+
+或签の候補タスクは、まず引き受け（claim）により assignee にならないと処理できません。会签タスクは直接割り当てなので引き受けはスキップします。
+
+```java
+@Transactional(rollbackFor = Exception.class)
+public void approve(String taskId, String username, boolean agree, String comment) {
+    Task task = taskService.createTaskQuery().taskId(taskId).active().singleResult();
+    if (task == null) {
+        throw new BusinessException(ErrorCode.TASK_NOT_FOUND, "承認待ちが存在しないか、すでに処理済みです");
+    }
+
+    // 或签：候補タスクはまず引き受ける
+    if (task.getAssignee() == null) {
+        boolean isCandidate = taskService.createTaskQuery()
+                .taskId(taskId).taskCandidateUser(username).count() > 0;
+        if (!isCandidate) {
+            throw new BusinessException(ErrorCode.NO_PERMISSION, "このタスクを処理する権限がありません");
+        }
+        taskService.claim(taskId, username);
+    } else if (!username.equals(task.getAssignee())) {
+        throw new BusinessException(ErrorCode.NO_PERMISSION, "このタスクはあなたに割り当てられていません");
+    }
+
+    // 承認コメントを記録
+    Authentication.setAuthenticatedUserId(username);
+    taskService.addComment(taskId, task.getProcessInstanceId(),
+            (agree ? "承認：" : "差戻し：") + comment);
+
+    // フロー変数を書き込み：会签の完了条件は approveResultList に依存
+    Map<String, Object> vars = new HashMap<>();
+    if (isCountersign(task)) {
+        @SuppressWarnings("unchecked")
+        List<String> results = (List<String>) taskService.getVariable(taskId, "approveResultList");
+        if (results == null) results = new ArrayList<>();
+        results.add(agree ? "APPROVE" : "REJECT");
+        vars.put("approveResultList", results);
+    }
+    vars.put("approved", agree);
+
+    taskService.complete(taskId, vars);
+
+    // 承認後処理：次ノードの承認待ちタスクをプッシュし、プロセス終了時に勤怠と連携する（6.5、6.6 参照）
+    afterTaskComplete(task.getProcessInstanceId(), agree);
+}
+```
+
+差し戻しポリシーは企業のルールに応じて選択できます：申請者へ差し戻し（再提出）、前ノードへ差し戻し、またはプロセスを直接終了する方法です。打刻補正（補カード）の場面では「いずれかが却下したら即終了＋申請者へ通知」がよく使われますが、これはまさに会签（全員承認）の完了条件における `!contains('REJECT')` のセマンティクスです。
+
+### 6.5 承認と勤怠データの連携（既存機能を流用）
+
+プロセス終了時に業務タイプに基づいて勤怠へ書き戻します。このロジックはシステムに既に存在し、WeCom 側の承認がトリガーするのも同じ `taskService.complete()` であるため、連携は自然に有効になります。打刻補正の典型的な処理は以下のとおりです：
+
+```java
+public void afterProcessFinished(String processInstanceId) {
+    // プロセス終了後、プロセスインスタンス変数は履歴テーブルに移行済みのため、HistoricVariableInstance から業務変数を取得する
+    Map<String, Object> vars = historyService.createHistoricVariableInstanceQuery()
+            .processInstanceId(processInstanceId)
+            .list()
+            .stream()
+            .collect(Collectors.toMap(HistoricVariableInstance::getVariableName,
+                    HistoricVariableInstance::getValue, (a, b) -> a));
+    String bizType = String.valueOf(vars.get("bizType"));     // MAKEUP / LEAVE / OVERTIME
+    Boolean approved = (Boolean) vars.get("approved");
+
+    if (!Boolean.TRUE.equals(approved)) {
+        notifyApplicant(processInstanceId, false);   // 却下通知
+        return;
+    }
+
+    switch (bizType) {
+        case "MAKEUP":
+            // 打刻補正が承認された場合：該当日の打刻記録を修正・補登録する（既存の勤怠 Service）
+            attendanceService.applyMakeupCard(
+                (Long) vars.get("recordId"),
+                (String) vars.get("makeupTime"),
+                String.valueOf(vars.get("reason")));
+            break;
+        case "LEAVE":
+            // 休暇が承認された場合：休暇を登録し、休暇残日数を減算する
+            leaveService.grantLeave(vars);
+            break;
+        default:
+            break;
+    }
+    notifyApplicant(processInstanceId, true);
+}
+```
+
+Activiti のプロセス終了イベントをリスニングしてトリガーするほうが、各承認インタフェース内で手動呼び出しするよりも堅牢です（PC、WeCom、定時タスクのどの入口から完了しても通過します）：
+
+```java
+import org.activiti.engine.delegate.event.ActivitiEntityEvent;
+import org.activiti.engine.delegate.event.ActivitiEvent;
+import org.activiti.engine.delegate.event.ActivitiEventListener;
+import org.activiti.engine.delegate.event.ActivitiEventType;
+
+/**
+ * Activiti プロセス終了リスナー：承認が最終終了した後に勤怠と連携する
+ * RuntimeService.addEventListener(...) または ProcessEngineConfiguration 経由で登録
+ */
+@Component
+public class ApprovalProcessListener implements ActivitiEventListener {
+
+    @Resource
+    private ApprovalFlowService approvalFlowService;
+
+    @Override
+    public void onEvent(ActivitiEvent event) {
+        if (event.getType() == ActivitiEventType.PROCESS_COMPLETED) {
+            approvalFlowService.afterProcessFinished(event.getProcessInstanceId());
+        }
+    }
+
+    @Override
+    public boolean isFailOnException() {
+        return false;   // リスナーの例外はプロセス自体に影響しない
+    }
+}
+```
+
+### 6.6 承認待ちタスクを企業微信（WeCom）へプッシュ通知
+
+H5 の承認待ちリストがあるだけでは不十分です——従業員は自発的に開いて確認したりしません。フローが遷移して新しい承認待ちが発生したら、バックエンドから次の処理者の WeCom へ「承認カード」をプッシュすべきです。カードをタップすると H5 の該当承認詳細ページが直接開き、第4章のシングルサインオン（免登）により、開いた時点で既にログイン済みになっています。
+
+タスク作成リスナーでプッシュをトリガーします（Activiti イベントリスニング）：
+
+```java
+import org.activiti.engine.delegate.event.ActivitiEntityEvent;
+import org.activiti.engine.delegate.event.ActivitiEventListener;
+import org.activiti.engine.delegate.event.ActivitiEventType;
+import org.activiti.engine.impl.persistence.entity.TaskEntity;
+import org.activiti.engine.task.IdentityLink;
+
+@Component
+public class WecomTodoPushListener implements ActivitiEventListener {
+
+    @Resource private WecomMessageService wecomMessageService;
+    @Resource private SysUserMapper userMapper;
+    @Resource private TaskService taskService;
+
+    @Override
+    public void onEvent(org.activiti.engine.delegate.event.ActivitiEvent event) {
+        if (event.getType() != ActivitiEventType.TASK_CREATED) return;
+        TaskEntity task = (TaskEntity) ((ActivitiEntityEvent) event).getEntity();
+
+        // 直接アサイン（会签では各人に1タスク）→ assignee にプッシュ
+        if (StrUtil.isNotBlank(task.getAssignee())) {
+            pushToUser(task, task.getAssignee());
+        } else {
+            // 或签（いずれか1名が承認）の候補タスク → 全候補者／候選グループを展開したメンバーにプッシュし、入った順に先着で承認
+            for (IdentityLink link : taskService.getIdentityLinksForTask(task.getId())) {
+                if (StrUtil.isNotBlank(link.getUserId())) {
+                    pushToUser(task, link.getUserId());
+                } else if (StrUtil.isNotBlank(link.getGroupId())) {
+                    // 候補グループ：グループからメンバーの username を取得して1人ずつプッシュする（実装は省略）
+                    userMapper.findUsernamesByGroup(link.getGroupId())
+                            .forEach(username -> pushToUser(task, username));
+                }
+            }
+        }
+    }
+
+    private void pushToUser(TaskEntity task, String username) {
+        SysUser u = userMapper.findByUsername(username);
+        if (u == null || StrUtil.isBlank(u.getWecomUserId())) {
+            log.warn("ユーザー {} は企業微信未連携のため、承認待ちプッシュをスキップします", username);
+            return;
+        }
+        wecomMessageService.sendApprovalTodoCard(u.getWecomUserId(), task);
+    }
+
+    @Override
+    public boolean isFailOnException() {
+        return false;   // プッシュ失敗で Activiti のタスク作成をロールバックしない
+    }
+}
+```
+
+テキストカードメッセージ（タップで H5 承認ページへ直接遷移）：
+
+```json
+{
+  "touser": "wangwu",
+  "msgtype": "textcard",
+  "agentid": 1000002,
+  "textcard": {
+    "title": "承認待ち：李四の打刻補正申請",
+    "description": "ノード：直属上司承認<br/>補正日：2026-09-08 午前<br/>理由：外勤先の顧客現場で打刻し忘れ",
+    "url": "https://attendance.yourcompany.com/mobile/approval/123456",
+    "btntxt": "今すぐ承認"
+  }
+}
+```
+
+重要ポイント：**カードの url は承認詳細ページまで直接組み立てる**ことです。従業員がタップ → トークンなし → 第4章の OAuth シングルサインオン（免登）がサイレント実行 → コールバック後に `state` に載せた戻り先パス（4.3 の redirectPath 参照）を経て、この承認詳細に戻ります。この効果を実現するには、メッセージカードのリンクに WeCom 所定の免登パラメータを付けるか、フロントエンドのガードで全 `/mobile/**` にログインを強制するだけでよく、特別な処理は不要です。
+
+**テンプレートカードのボタンコールバック（応用：ページを開かず直接承認／却下）**
+
+承認者が通知内で直接「承認／却下」をタップできるようにしたい場合は、`template_card`（button_interaction）と第6章のコールバック受信を組み合わせます。バックエンドがボタンイベントを受信したら `mobileApprovalService.approve()` を直接呼び、カードの状態を更新します。この方式は承認操作が極めて単純（ワンクリック承認）なノードに適しています。意見の記入や会签の詳細確認が必要な場合は、引き続き H5 へ遷移させることをおすすめします。両者の根底で呼ばれる承認メソッドは完全に同一です。
+
+### 6.7 組織構造同期：動的な承認者へ確実にプッシュするために
+
+「組織構造に基づく承認」で動的に算出される処理者は username であり、プッシュ時にはその wecom_user_id を引ける必要があります。保障方法は2つあります：
+
+1. **アドレス帳コールバックの増分同期**（推奨、リアルタイム）：`change_contact` イベント（メンバーの追加／更新／削除、部門変更）を購読し、`sys_user` の wecom_user_id と部門所属をリアルタイム更新します。
+2. **定時の全量同期**：毎日早朝にアドレス帳の部門／メンバー API を呼んで全量を突き合わせ、フォールバックとします。
+
+```
+GET /cgi-bin/department/list?id=0            # 部門ツリー
+GET /cgi-bin/user/list?department_id=1&fetch_child=1   # 部門メンバー詳細
+```
+
+同期時には社員番号（username）で突き合わせ、WeCom の userid を `sys_user.wecom_user_id` に書き戻すとともに部門関係も同期し、`orgService.findLeader()` の組織ルーティングとプッシュ先の解決に利用します。アドレス帳読み取り API には1日あたりの呼び出し上限があるため（9.4 参照）、必ず「増分コールバックを主体に＋1日1回の全量同期をフォールバックに」し、高頻度のポーリングは避けてください。
+## 七、メッセージプッシュとイベントコールバック
+
+### 7.1 access_token とメッセージ送信
+
+アプリメッセージは一元的にサーバー側から送信します。API は以下のとおりです：
+
+```
+POST https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=TOKEN
+```
+
+よく使うメッセージタイプ：
+
+- `text`：勤怠リマインダーなどのプレーンテキスト
+- `textcard`：タイトル＋説明＋ボタン。タップで H5 へ遷移（承認待ちの第一選択）
+- `template_card`：インタラクティブボタン付きで、通知内から直接操作できる（コールバックと併用）
+- `markdown`：承認サマリーなどのリッチテキスト（企業微信内でサポート）
+
+プッシュサービスのラッパー（`duplicate_check_interval` は短時間の重複プッシュ防止に使用します）：
+
+```java
+@Service
+@Slf4j
+public class WecomMessageService {
+
+    @Resource private WecomTokenManager tokenManager;
+    @Resource private RestTemplate restTemplate;
+    @Value("${wecom.agentid}") private Integer agentId;
+
+    /** 承認待ちカードを送信し、タップで H5 の承認詳細へ遷移させる */
+    public void sendApprovalTodoCard(String wecomUserId, Task task) {
+        Map<String, Object> card = new HashMap<>();
+        card.put("title", "承認待ち：" + task.getName());
+        card.put("description", "新しい承認待ちが1件あります。ご対応ください");
+        card.put("btntxt", "今すぐ承認");
+        card.put("url", "https://attendance.yourcompany.com/mobile/approval/" + task.getId());
+        Map<String, Object> msg = new HashMap<>();
+        msg.put("touser", wecomUserId);
+        msg.put("msgtype", "textcard");
+        msg.put("agentid", agentId);
+        msg.put("textcard", card);
+        msg.put("duplicate_check_interval", 1800);
+
+        send(msg);
+    }
+
+    public void send(String msg) { /* message/send へ POST し、invaliduser/errcode を記録する */ }
+}
+```
+
+> レスポンスボディの `invaliduser`／`invalidparty` は必ず記録してください。プッシュ先の中に未連携や可視範囲外の人がいることを示しており、「なぜあの人に承認待ち通知が届かないのか」を調査する際の最初の手がかりになります。
+
+### 7.2 コールバックの署名検証と暗号化／復号
+
+「メッセージ受信」を設定すると、企業微信からコールバック URL へ2種類のリクエストが送信されます：
+
+- **GET**：設定保存時の URL 有効性検証。`echostr` を復号してそのまま返す必要があります
+- **POST**：正式なイベントプッシュ（テンプレートカードのボタン、アドレス帳変更）。暗号文 XML で、署名検証＋AES 復号が必要です
+
+```java
+@RestController
+@RequestMapping("/api/wecom/callback")
+@Slf4j
+public class WecomCallbackController {
+
+    @Resource private WecomCallbackService callbackService;
+
+    /** URL 検証 */
+    @GetMapping("/message")
+    public String verify(@RequestParam("msg_signature") String signature,
+                         @RequestParam String timestamp,
+                         @RequestParam String nonce,
+                         @RequestParam String echostr) {
+        try {
+            return callbackService.verifyUrl(signature, timestamp, nonce, echostr);
+        } catch (Exception e) {
+            log.error("WeCom コールバック URL 検証に失敗しました", e);
+            return "";
+        }
+    }
+
+    /** イベント受信：必ず速やかに success を返し、時間のかかる処理は非同期化して WeCom の再試行を避ける */
+    @PostMapping(value = "/message", produces = "application/xml")
+    public String receive(@RequestParam("msg_signature") String signature,
+                          @RequestParam String timestamp,
+                          @RequestParam String nonce,
+                          @RequestBody String encryptedBody) {
+        try {
+            callbackService.handleAsync(signature, timestamp, nonce, encryptedBody);
+        } catch (Exception e) {
+            log.error("WeCom コールバック処理に失敗しました", e);
+        }
+        return "success";   // 業務の成否にかかわらず先に success を返し、WeCom の指数退避再試行を防ぐ
+    }
+}
+```
+
+暗号化／復号は自作せず、公式の `aes-256` サンプルコードパッケージ（企業微信公式が提供する Java 版 `WXBizMsgCrypt`）をそのまま使用してください。これは SHA1 署名チェック、AES-256-CBC 復号、corpId 検証、XML 組み立てをカプセル化しています。`Token`、`EncodingAESKey`、`corpid` の3つのパラメータは管理画面のコールバック設定から取得します。
+
+### 7.3 テンプレートカードのボタンとアドレス帳イベントの処理
+
+```java
+@Service
+@Slf4j
+public class WecomCallbackService {
+
+    @Resource private MobileApprovalService approvalService;
+    @Resource private ContactSyncService contactSyncService;
+    @Resource private WXBizMsgCrypt crypt;   // 公式の暗号化／復号クラス
+
+    /** 復号後にイベントタイプごとに振り分ける */
+    public void handle(String sig, String ts, String nonce, String body) throws Exception {
+        String xml = crypt.DecryptMsg(sig, ts, nonce, body);
+        // XStream/Digester で XML を解析し、Event / ChangeType / TaskId / EventKey / FromUserName を取得する
+        CallbackEvent event = CallbackEvent.parse(xml);
+
+        switch (event.getEvent()) {
+            case "template_card_event":
+                // テンプレートカードのボタン：EventKey がボタン key、FromUserName がタップした人の userid
+                onCardButton(event);
+                break;
+            case "change_contact":
+                contactSyncService.handleChange(event.getChangeType(), event.getUserId());
+                break;
+            default:
+                log.info("未処理の WeCom イベント: {}", xml);
+        }
+    }
+
+    private void onCardButton(CallbackEvent e) {
+        boolean agree = "approve".equals(e.getEventKey());
+        String username = contactSyncService.wecomUserIdToUsername(e.getFromUserName());
+        // task_id はカード送信時に当方が生成して Activiti の taskId と関連付け、Redis/DB に保存して取り戻す
+        String taskId = taskCardMapping.get(e.getTaskId());
+        approvalService.approve(taskId, username, agree, agree ? "承認" : "却下");
+        // update_template_card を呼んで元のカードを「承認済み／却下済み」に更新し、重複タップを防げる
+    }
+}
+```
+
+イベント処理は必ず**冪等**にしてください。WeCom はタイムアウトにより同じイベントを再プッシュする可能性があります。`approve` 内部では「タスクが終了済み／処理済み」を判定しており（6.4 で active タスクを確認）、再プッシュされても二重承認は発生しません。時間のかかる操作（複数メッセージの送信、複数テーブルへの書き込みなど）は非同期スレッドまたはメッセージキューに置き、コールバックが秒単位で `success` を返せるようにします。
+
+## 八、サーバー側インフラ
+
+### 8.1 access_token / jsapi_ticket の集中管理
+
+どちらのチケットも有効期間は7200秒、同一企業・同一アプリで一意であり（重複取得すると古いものが失効します）、サーバー側で集中キャッシュする必要があります。複数インスタンス構成では分散ロックにより、リフレッシュするインスタンスが1つだけになるよう保証します：
+
+```java
+@Component
+@Slf4j
+public class WecomTokenManager {
+
+    private static final String TOKEN_KEY = "wecom:access_token";
+    private static final String LOCK_KEY  = "wecom:access_token:lock";
+    private static final long EXPIRE_SECONDS = 7100;   // 7200 より100秒の余裕を持たせる
+
+    @Value("${wecom.corpid}") private String corpId;
+    @Value("${wecom.secret}") private String secret;
+    @Resource private StringRedisTemplate redis;
+    @Resource private RestTemplate restTemplate;
+
+    public String getAccessToken() {
+        String cached = redis.opsForValue().get(TOKEN_KEY);
+        if (StrUtil.isNotBlank(cached)) return cached;
+
+        Boolean locked = redis.opsForValue().setIfAbsent(LOCK_KEY, "1", 10, TimeUnit.SECONDS);
+        if (Boolean.FALSE.equals(locked)) return waitForToken();   // 他インスタンスのリフレッシュを待つ
+
+        try {
+            String again = redis.opsForValue().get(TOKEN_KEY);      // 二重チェック
+            if (StrUtil.isNotBlank(again)) return again;
+            return refresh();
+        } finally {
+            redis.delete(LOCK_KEY);
+        }
+    }
+
+    private String refresh() {
+        String url = String.format(
+            "https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=%s&corpsecret=%s", corpId, secret);
+        JSONObject resp = restTemplate.getForObject(url, JSONObject.class);
+        if (resp == null || resp.getIntValue("errcode") != 0) {
+            throw new BusinessException(ErrorCode.WECOM_API_ERROR, "access_token の取得に失敗しました");
+        }
+        String token = resp.getString("access_token");
+        redis.opsForValue().set(TOKEN_KEY, token, EXPIRE_SECONDS, TimeUnit.SECONDS);
+        return token;
+    }
+
+    private String waitForToken() {
+        for (int i = 0; i < 10; i++) {
+            sleep(200);
+            String t = redis.opsForValue().get(TOKEN_KEY);
+            if (StrUtil.isNotBlank(t)) return t;
+        }
+        throw new BusinessException(ErrorCode.WECOM_API_ERROR, "access_token の取得がタイムアウトしました");
+    }
+
+    public String getCorpId() { return corpId; }
+}
+```
+
+`jsapi_ticket` と agent_config のチケットは、全く同じパターンで別々にキャッシュしてください（キャッシュキーは分けます）。
+
+### 8.2 機微な設定の分離
+
+corpid／agentid は公開可能ですが、secret、コールバック Token、EncodingAESKey は環境変数または設定センター経由で注入し、Git には入れません：
 
 ```yaml
-# application.yml
-server:
-  port: 8080
-  servlet:
-    context-path: /
-
-spring:
-  application:
-    name: attendance-backend
-  datasource:
-    url: jdbc:postgresql://localhost:5432/attendance
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
-    driver-class-name: org.postgresql.Driver
-  jackson:
-    date-format: yyyy-MM-dd HH:mm:ss
-    time-zone: Asia/Shanghai
-  liquibase:
-    enabled: true
-    change-log: classpath:db/changelog-master.xml
-
-# 企業WeChat設定
+# application-prod.yml
 wecom:
   corpid: ${WECOM_CORPID}
   agentid: ${WECOM_AGENTID}
   secret: ${WECOM_SECRET}
+  oauth:
+    redirect: https://attendance.yourcompany.com/mobile/oauth/callback
+  jssdk:
+    # 署名に関与するフロントエンドのドメイン。バックエンドの検証／リンク生成に使用する
+    frontend-base: https://attendance.yourcompany.com
   callback:
     token: ${WECOM_CALLBACK_TOKEN}
     encoding-aes-key: ${WECOM_CALLBACK_AES_KEY}
-
-# 勤怠設定
-attendance:
-  company:
-    latitude: 30.2741
-    longitude: 120.1551
-  allowed-radius: 200
-
-# JWT 設定
-jwt:
-  secret: ${JWT_SECRET}
-  expiration: 604800  # 7日間（秒）
-
-mybatis-plus:
-  mapper-locations: classpath*:/mapper/**/*.xml
-  type-aliases-package: com.company.attendance.entity
-  configuration:
-    map-underscore-to-camel-case: true
 ```
 
-### 9.3 データベーステーブル設計
+### 8.3 API セキュリティ
 
-```sql
--- 打刻記録テーブル
-CREATE TABLE checkin_record (
-    id              BIGSERIAL PRIMARY KEY,
-    user_id         BIGINT       NOT NULL,
-    checkin_type    VARCHAR(20)  NOT NULL,  -- CLOCK_IN / CLOCK_OUT / SCAN / PHOTO
-    latitude        DOUBLE PRECISION,
-    longitude       DOUBLE PRECISION,
-    accuracy        DOUBLE PRECISION,
-    distance        INTEGER,
-    photo_path      VARCHAR(500),
-    qr_token_id     BIGINT,
-    checkin_time    TIMESTAMP    NOT NULL,
-    create_time     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    update_time     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+- OAuth ログインエンドポイントと WeCom コールバックエンドポイントは許可し、それ以外は全て既存の JWT 認証を通す
+- `state` は使い捨てのランダム文字列＋sessionStorage 検証で CSRF を防止
+- code は1回限り・5分間有効。バックエンドが受信したら即座に交換し、絶対にキャッシュしない
+- 打刻座標はバックエンド側でも距離を再検証し、フロントエンドを信用しない。写真には透かしを入れ、QR スキャンには測位を重ねる
+- コールバック API は署名検証＋AES 復号＋corpId 検証を行い、偽造イベントを拒否する
+- 重要な API はレート制限（Redis スライディングウィンドウ）をかけて不正な連投を防ぐ
 
--- スキャン token テーブル
-CREATE TABLE qr_token (
-    id              BIGSERIAL PRIMARY KEY,
-    token           VARCHAR(100) NOT NULL UNIQUE,
-    location_name   VARCHAR(100),
-    status          SMALLINT     NOT NULL DEFAULT 1,
-    expire_time     TIMESTAMP    NOT NULL,
-    create_time     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+### 8.4 アドレス帳同期サービス
 
--- ユーザーテーブル
-CREATE TABLE sys_user (
-    id              BIGSERIAL PRIMARY KEY,
-    wecom_user_id   VARCHAR(50)  NOT NULL UNIQUE,
-    name            VARCHAR(50)  NOT NULL,
-    avatar          VARCHAR(500),
-    department_ids  VARCHAR(200),
-    mobile          VARCHAR(20),
-    email           VARCHAR(100),
-    status          SMALLINT     NOT NULL DEFAULT 1,
-    create_time     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    update_time     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+```java
+@Service
+public class ContactSyncService {
 
--- インデックス
-CREATE INDEX idx_checkin_user_time ON checkin_record (user_id, checkin_time);
-CREATE INDEX idx_checkin_type ON checkin_record (checkin_type);
-CREATE INDEX idx_qr_token_token ON qr_token (token);
+    /** 全量同期（毎日早朝のフォールバック） */
+    public void syncAll() {
+        String token = tokenManager.getAccessToken();
+        // 1. 部門ツリー department/list
+        // 2. 末端部門を巡回し user/list?fetch_child=1 でメンバーを取得
+        // 3. 社員番号 sys_user.username で突き合わせ、wecom_user_id、部門、氏名、携帯、状態を書き戻す
+        // 4. WeCom status=5（退職）／メンバー削除イベント → システムアカウントを無効化
+    }
+
+    /** 増分イベント（リアルタイム） */
+    public void handleChange(String changeType, String wecomUserId) {
+        switch (changeType) {
+            case "create_user": case "update_user": upsertOne(wecomUserId); break;
+            case "delete_user": disableByWecomUserId(wecomUserId); break;
+            // 部門変更は部門テーブルを同期し、orgService.findLeader の組織ルーティングに供する
+            default: break;
+        }
+    }
+
+    public String wecomUserIdToUsername(String wecomUserId) {
+        return userMapper.findUsernameByWecomId(wecomUserId);
+    }
+}
 ```
+
+## 九、ハマりどころ回避ガイド
+
+### 9.1 OAuth シングルサインオン（免登）関連
+
+- **アプリホーム／コールバックドメインは必ず「信頼ドメイン」配下にする**こと。さもないと認可ページで `redirect_uri 参数错误` が出ます。
+- **認可リンクには必ず `agentid` を付ける**こと。一部の企業微信バージョンでは、これがないと `getuserinfo` でアプリ身份を取得できません。
+- **`appid` に入れるのは corpid** であって agentid ではありません。初心者が逆に入れがちです。
+- **userid ではなく openid が返る**：利用者がアプリの可視範囲外です。アプリの「可視範囲」に当該メンバーの部門が含まれるか確認し、コード内で黙ってアカウント作成しないでください。
+- **PC ブラウザでリンクを開いてもサイレント認可されない**：`snsapi_base` は WeCom クライアント内でのみ無感覚に動作します。フロントエンドは必ず先に UA を判定し、WeCom 外ならシステムのアカウント／パスワードログインへ流してください。
+- **code は1回限り・5分で失効**：コールバックページを更新すると code 再利用エラーになります。ログイン成功後は `router.replace` で URL 上の code を消し、更新による再実行を防いでください。
+
+### 9.2 JS-SDK 署名関連
+
+- **iOS は入口ページ URL、Android は現在ページ URL で署名する**（5.3 参照）。SPA ではこれが `invalid signature` の最大の原因です。入口 URL は最初のルート遷移前に記録する必要があります。
+- **署名に関与する URL と `location.href` は1文字単位で完全一致する必要がある**：プロトコル、ドメイン、ポート、query をすべて含めること。hash 部分はルールに沿って統一的に扱います（history モードで回避するのがおすすめ）。
+- **フロントエンドが encode するならバックエンドも encode、どちらもしないならどちらもしない**。署名文字列の連結順は必ず `jsapi_ticket&noncestr&timestamp&url` です。
+- 企業微信専用 API を呼ぶには `wx.config` に `beta: true` を設定し、さらに `wx.agentConfig` を1回実行する必要があります。
+- 実機ローカルデバッグには、内部ネットワークを公開する HTTPS ドメインが必須です。hosts 方式はスマホには効きません。
+
+### 9.3 Activiti とアカウントマッピング関連
+
+- **処理者の識別子は必ず内部 username に統一する**こと。wecom_user_id を直接 BPMN の assignee に書かないでください。身份ソースを変えた場合（将来 DingTalk／Lark を接続する等）にフロー定義を全部書き換えることになります。
+- **wecom_user_id で重複アカウントを新規作成しない**：既存システムにおける第一原則はバインド（マッピング）です（4.6）。さもないと勤怠と過去の承認待ちが2人分に分裂します。
+- **或签の候補タスクは処理前に必ず claim する**こと。claim せず complete すると、タスクが現在のユーザーに属していないというエラーになります。
+- **会签の却下時は残りのインスタンスを早期終了させる**：completionCondition に REJECT 判定を含める＋リスナーで残りの task を delete します。さもないと却下後も他の人に承認待ちが届きます。
+- **勤怠連携はプロセス終了リスナーに置く**こと。特定の承認ボタン API に置くのではなく、これにより PC、H5、カードコールバックのどの入口でも有効になり、かつ承認が実際に通っていなければ勤怠を誤変更しません。
+
+### 9.4 WeCom API のレート制限とその他
+
+| API | 制限（参考。公式ドキュメントを優先） |
+|-----|------|
+| gettoken | 同一企業で5分以内の呼び出し回数に制限あり、キャッシュ必須 |
+| メッセージ送信 | アプリごとに1分あたりの上限あり、touser はなるべくバッチ化・重複排除 |
+| アドレス帳読み取り | 1日あたりの総回数上限あり、増分コールバックを主体にする |
+| メッセージカード更新 | API のレート制限あり、ループ更新を避ける |
+
+その他よくある問題：
+
+- **サーバーの出口 IP を「企業の信頼済み IP」ホワイトリストに追加する**こと。さもないと `60020` になります。
+- **HTTPS＋ICP 備案が必須**（中国本土のサーバー）。証明書が切れるとアプリ全体が、分かりやすい警告もなく開けなくなるため、監視に組み込んでください。
+- **コールバックは秒単位で `success` を返す必要がある**。業務処理は非同期化し、さもないと WeCom の再プッシュで二重承認が発生します（冪等でフォールバック）。
+- **textcard の url は詳細ページまで直接到達させるのがおすすめ**。免登＋state の戻り遷移と組み合わせ、「通知タップで承認へ直行」を実現します。
+- **secret が漏洩したら**即座に管理画面でリセットしてサービスを再起動してください。コードレビューでは「フロントエンド／ログへの secret 出現」をレッドラインとします。
+
+## 十、リリース前チェックリスト
+
+**WeCom 管理画面**
+
+- [ ] 自作アプリの可視範囲が全利用者の部門をカバーしている
+- [ ] アプリホームが H5 モバイルアドレス（https）に設定されている
+- [ ] 信頼ドメインが設定済みで、所有権確認ファイルにアクセスできる
+- [ ] 企業の信頼済み IP にホワイトリスト登録済み（サーバー出口 IP）
+- [ ] メッセージ受信の URL／Token／EncodingAESKey が設定済みで GET 検証を通過する
+
+**アカウントと身份**
+
+- [ ] `sys_user.wecom_user_id` がアドレス帳同期で初期化済みで、社員番号のマッピングが正しい
+- [ ] 未マッチアカウントには「管理者へ連絡／セルフバインド」の明確な案内があり、黙ってアカウント作成されない
+- [ ] `snsapi_base` のサイレント免登が実機（iOS＋Android）で検証通過
+- [ ] トークン失効後の再免登が無感覚に動作し、元のページへ正しく戻る（承認詳細ディープリンクを含む）
+
+**機能**
+
+- [ ] JS-SDK の `wx.config` が iOS／Android 両端で通過する（特に署名 URL を検証）
+- [ ] 測位／撮影／スキャンが実機で利用可能で、バックエンドの距離再検証が有効
+- [ ] 会签：各人に独立した承認待ち、1名でも却下したら即終了し申請者へ通知
+- [ ] 或签：候補者全員に届き、1人が claim して処理した後は他の人の承認待ちが消える
+- [ ] 組織構造承認：申請者の部門に応じて正しく責任者／管掌上司へルーティングされる
+- [ ] 承認通過後の勤怠連携（打刻補正／休暇残数減算）が正しく DB に反映される
+- [ ] 承認待ちカードが届き、タップでログイン済みの状態で詳細へ直行する。カードボタンのコールバックは冪等
+
+**セキュリティと運用**
+
+- [ ] secret／Token／AESKey は環境変数経由で、Git に入っておらずログにも出ていない
+- [ ] access_token／jsapi_ticket のキャッシュ＋分散ロックを検証済み（複数インスタンス）
+- [ ] HTTPS 証明書の有効期限監視、API のレート制限、重要操作の監査ログ
+- [ ] アドレス帳の増分コールバック＋毎日の全量フォールバックタスクが有効化済み
 
 ## まとめ
 
-企業WeChatアプリ開発の核心は以下の重要なセクションを理解することにあります：
+「既存の勤怠システム＋Activiti による複雑な承認」を前提に企業微信を統合するうえで、正しいアプローチは作り直しではなく、WeCom を**入口、身份プロバイダ、メッセージチャネル**として位置付けることです：
 
-- **開発モードの選定**：ミニプログラムモードは体験がネイティブに近く、API 呼び出しがより直接的で、勤怠などの高頻度シーンに適しています。H5 モードは柔軟性が高く、頻繁なイテレーションが必要なコンテンツ型アプリに適しています
-- **認証体系**：corpid/secret/agentid の三要素 -> access_token グローバルチケット -> ミニプログラム `wx.qyLogin` で code を取得 -> バックエンド `jscode2session` で userid を交換
-- **デバイス機能の呼び出し**：ミニプログラムは `wx.getLocation`、`wx.chooseMedia`、`wx.scanCode` でネイティブ機能を直接呼び出し、JS-SDK 署名不要
-- **バックエンド API 連携**：access_token 管理（Redis キャッシュ + 分散ロック）、アドレス帳同期、メッセージプッシュ（テキストカード / テンプレートカード）
-- **セキュリティ設計**：機密設定の環境変数注入、JWT 認証、session_key 保護、API レート制限、データマスキング
-- **デプロイ要件**：ミニプログラムサーバードメインの HTTPS が必須要件、バックエンドで access_token を一元管理
+- **方式選定**：既存 Web システムがあり、承認フォームが複雑で、高速なイテレーションと審査不要のリリースが求められる場合、ミニプログラムより H5 が適しています。OAuth2 の `snsapi_base` サイレント認可でアプリを開くだけの自動ログイン（免登）を実現でき、JS-SDK で測位、撮影、スキャンを十分カバーできます。
+- **自動ログインの流れ**：フロントのルートガードがトークンなしを検知 → 302 で WeCom 認可へ（state 付き）→ サイレントに code 付きで戻る → バックエンドが gettoken＋`auth/getuserinfo` で userid を取得 → **社員番号で既存システムのアカウントへマッピング（新規作成しない）** → システム従来の JWT を発行。以降の勤怠・承認 API は無改造で再利用できます。
+- **アカウントの分離**：Activiti の assignee／候補者は引き続き内部 username を使い、WeCom の userid は `sys_user` 上の外部身份フィールドにとどめます。ログイン時の本人確認とプッシュ先解決のときだけ変換し、複数のログイン方式が併存できる余地を残します。
+- **承認の再利用**：会签（マルチインスタンス＋完了条件）、或签（candidateUsers＋claim）、組織構造承認（UEL 式による責任者の動的解決）はすべて既存 BPMN を流用します。H5 は承認待ちリスト／詳細／処理の入口を追加するだけで、根底はすべて同じ `taskService.complete()` を通ります。
+- **連携と到達**：勤怠連携はプロセス終了リスナーに置いて全入口での一貫性を保証し、新しい承認待ちは textcard でプッシュしてリンクから承認詳細へ直行させ免登を再利用します。カード内のワンクリック承認はコールバック経由とし、操作は必ず冪等にします。
+- **主要なハマりどころ**：信頼ドメインと企業の信頼済み IP、iOS／Android の署名 URL の違い、code の使い捨てと state による CSRF 対策、重複アカウントを絶対に作らないこと、或签の claim、コールバックの秒速 success 応答、チケットの集中キャッシュ。
 
-重要な落とし穴：access_token の並行更新、ミニプログラム code の一回限り使用、`requiredPrivateInfos` 宣言、サーバードメイン設定、パッケージサイズ制限、API 頻度制限。
+公式ドキュメント：[企業微信開発者センター](https://developer.work.weixin.qq.com/document/)
 
-公式ドキュメント：[https://developer.work.weixin.qq.com/document/](https://developer.work.weixin.qq.com/document/)
-
-> 本記事は勤怠管理システムを手がかりとして、企業WeChatミニプログラムモードをメインラインに据え、アプリ開発の完全な技術チェーンを整理しました。コアパターン（`wx.qyLogin` 認証 -> ネイティブ API 呼び出し -> バックエンド API 連携 -> メッセージプッシュ -> コールバック処理）はすべてのタイプの企業WeChatミニプログラムアプリ開発に適用できます。H5 モードは比較として、迅速なイテレーションやコンテンツ表示が主のシーンでは依然として代替不可能な利点があります。
+> 本アプローチの本質は「作り直し」ではなく「統合」です。最小限の新規コード（OAuth ログインエンドポイント1つ、アカウントマッピング層、JS-SDK 署名サービス1つ、承認待ちプッシュリスナー群）によって、長年培ってきた勤怠と Activiti 承認の機能を従業員の企業微信へシームレスに届け、無感覚な自動ログインを実現します。今後、打刻体験のさらなる向上が必要になれば、ミニプログラムの打刻入口を追加し、H5 承認と同一のバックエンドアカウント・ワークフローを共有する形でスムーズに進化できます。
